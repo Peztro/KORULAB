@@ -18,7 +18,7 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _isLoading = false;
 
   Future<void> _register() async {
-    final username = _usernameController.text.trim();
+    final username = DBService.normalizeUsername(_usernameController.text);
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
@@ -29,8 +29,10 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
 
-    if (username.length < 3) {
-      _showSnackBar('El usuario debe tener al menos 3 caracteres');
+    if (!DBService.isValidUsername(username)) {
+      _showSnackBar(
+        'El @usuario debe tener entre 3 y 20 caracteres: letras, números, punto o guion bajo.',
+      );
       return;
     }
 
@@ -55,7 +57,7 @@ class _RegisterPageState extends State<RegisterPage> {
       // Verificar si el usuario ya existe
       final usernameExists = await DBService.usernameExists(username);
       if (usernameExists) {
-        _showSnackBar('El usuario ya existe');
+        _showSnackBar('Ese @usuario ya está ocupado');
         setState(() => _isLoading = false);
         return;
       }
@@ -142,7 +144,9 @@ class _RegisterPageState extends State<RegisterPage> {
                 controller: _usernameController,
                 enabled: !_isLoading,
                 decoration: InputDecoration(
-                  hintText: 'Nombre de usuario',
+                  labelText: 'Usuario único',
+                  hintText: 'ej. eco_explorador',
+                  prefixText: '@',
                   prefixIcon: const Icon(Icons.person),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),

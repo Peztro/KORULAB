@@ -1,10 +1,17 @@
 ﻿import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'db_service.dart';
 import 'register_page.dart';
 import 'splash_page.dart';
+import 'profile_page.dart';
+import 'support_pages.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await DBService.ensureAdminAccount();
+  await DBService.ensureKoruColAccount();
   runApp(const KoruApp());
 }
 
@@ -127,7 +134,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _isLoading = false;
 
   Future<void> _login() async {
-    final username = _usernameController.text.trim();
+    final username = DBService.normalizeUsername(_usernameController.text);
     final password = _passwordController.text;
 
     if (username.isEmpty || password.isEmpty) {
@@ -217,7 +224,9 @@ class _LoginPageState extends State<LoginPage> {
                 controller: _usernameController,
                 enabled: !_isLoading,
                 decoration: InputDecoration(
-                  hintText: 'Nombre de usuario',
+                  labelText: 'Usuario único',
+                  hintText: 'tu_usuario',
+                  prefixText: '@',
                   prefixIcon: const Icon(Icons.person),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
@@ -1196,53 +1205,514 @@ class ProgressStats extends ChangeNotifier {
   int _completedLessons = 0;
   int _dailyStreak = 0;
   int _ekostrellas = 0;
+  int _hintCredits = 0;
+  int _streakProtectors = 0;
+  int _starMultipliers = 0;
+  int _secondChances = 0;
   DateTime? _lastLessonDate;
+  String? _progressUsername;
+  bool _courseProgressLoaded = false;
+  final Set<String> _completedActivityIds = {};
 
   int get correctAnswers => _correctAnswers;
   int get totalAnswers => _totalAnswers;
   int get completedLessons => _completedLessons;
   int get dailyStreak => _dailyStreak;
   int get ekostrellas => _ekostrellas;
+  int get hintCredits => _hintCredits;
+  int get streakProtectors => _streakProtectors;
+  int get starMultipliers => _starMultipliers;
+  int get secondChances => _secondChances;
+  int get completedActivities => _completedActivityIds.length;
+  bool get isCourseProgressLoaded => _courseProgressLoaded;
   int get totalLessons => courses.fold<int>(0, (sum, course) => sum + course.activities.length);
 
   int get accuracyPercent => _totalAnswers > 0 ? (_correctAnswers * 100 ~/ _totalAnswers) : 0;
   double get accuracyRatio => _totalAnswers > 0 ? _correctAnswers / _totalAnswers : 0.0;
 
-  void reportLessonResult(int correct, int total) {
+  Future<int> loadCourseProgress(String username) async {
+    if (_progressUsername == username) return 0;
+    _progressUsername = username;
+    _courseProgressLoaded = false;
+    _completedActivityIds.clear();
+    _correctAnswers = 0;
+    _totalAnswers = 0;
+    _completedLessons = 0;
+    _ekostrellas = 0;
+    _dailyStreak = 0;
+    _hintCredits = 0;
+    _streakProtectors = 0;
+    _starMultipliers = 0;
+    _secondChances = 0;
+    _lastLessonDate = null;
+    notifyListeners();
+
+    var activatedProtectors = 0;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      if (_progressUsername == username) {
+        _completedActivityIds.addAll(
+          preferences.getStringList('korulab_course_progress_$username') ?? [],
+        );
+        _ekostrellas = preferences.getInt('korulab_eko_stars_$username') ?? 0;
+        _correctAnswers =
+          preferences.getInt('korulab_correct_answers_$username') ?? 0;
+        _totalAnswers =
+          preferences.getInt('korulab_total_answers_$username') ?? 0;
+        _completedLessons =
+          preferences.getInt('korulab_completed_lessons_$username') ?? 0;
+        _dailyStreak = preferences.getInt('korulab_daily_streak_$username') ?? 0;
+        _hintCredits = preferences.getInt('korulab_hint_credits_$username') ?? 0;
+        _streakProtectors =
+            preferences.getInt('korulab_streak_protectors_$username') ?? 0;
+        _starMultipliers =
+          preferences.getInt('korulab_star_multipliers_$username') ?? 0;
+        _secondChances =
+          preferences.getInt('korulab_second_chances_$username') ?? 0;
+        final savedDate = preferences.getString('korulab_last_lesson_$username');
+        _lastLessonDate = savedDate == null ? null : DateTime.tryParse(savedDate);
+
+        final today = DateTime.now();
+        final todayDate = DateTime(today.year, today.month, today.day);
+        final hadMissedDays = _lastLessonDate != null &&
+            todayDate.difference(_lastLessonDate!).inDays > 1;
+        activatedProtectors = _activateMissedDayProtectors(todayDate);
+        if (hadMissedDays) await _saveUserProgress();
+      }
+    } catch (_) {
+    } finally {
+      if (_progressUsername == username) {
+        _courseProgressLoaded = true;
+        notifyListeners();
+      }
+    }
+    return activatedProtectors;
+  }
+
+  int _activateMissedDayProtectors(DateTime today) {
+    final lastLesson = _lastLessonDate;
+    if (lastLesson == null) return 0;
+
+    final missedDays = today.difference(lastLesson).inDays - 1;
+    if (missedDays <= 0) return 0;
+
+    final activated = _streakProtectors < missedDays
+        ? _streakProtectors
+        : missedDays;
+    _streakProtectors -= activated;
+    if (activated == missedDays) {
+      _dailyStreak += missedDays;
+    } else {
+      _dailyStreak = 0;
+    }
+    _lastLessonDate = today.subtract(const Duration(days: 1));
+    return activated;
+  }
+
+  bool isCourseUnlocked(int courseIndex) {
+    for (var index = 0; index < courseIndex; index++) {
+      for (var activityIndex = 0;
+          activityIndex < courses[index].activities.length;
+          activityIndex++) {
+        if (!_completedActivityIds.contains('$index:$activityIndex')) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  bool isActivityUnlocked(LessonActivity activity) {
+    for (var courseIndex = 0; courseIndex < courses.length; courseIndex++) {
+      for (var activityIndex = 0;
+          activityIndex < courses[courseIndex].activities.length;
+          activityIndex++) {
+        final currentActivity = courses[courseIndex].activities[activityIndex];
+        if (identical(currentActivity, activity)) return true;
+        if (!_completedActivityIds.contains('$courseIndex:$activityIndex')) {
+          return false;
+        }
+      }
+    }
+    return false;
+  }
+
+  String _activityProgressId(LessonActivity activity) {
+    for (var courseIndex = 0; courseIndex < courses.length; courseIndex++) {
+      final activityIndex = courses[courseIndex].activities.indexOf(activity);
+      if (activityIndex >= 0) return '$courseIndex:$activityIndex';
+    }
+    return activity.title;
+  }
+
+  Future<void> _saveUserProgress() async {
+    final username = _progressUsername;
+    if (username == null) return;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setStringList(
+        'korulab_course_progress_$username',
+        _completedActivityIds.toList(),
+      );
+      await preferences.setInt(
+        'korulab_correct_answers_$username',
+        _correctAnswers,
+      );
+      await preferences.setInt(
+        'korulab_total_answers_$username',
+        _totalAnswers,
+      );
+      await preferences.setInt(
+        'korulab_completed_lessons_$username',
+        _completedLessons,
+      );
+      await preferences.setInt('korulab_eko_stars_$username', _ekostrellas);
+      await preferences.setInt('korulab_daily_streak_$username', _dailyStreak);
+      await preferences.setInt('korulab_hint_credits_$username', _hintCredits);
+      await preferences.setInt(
+        'korulab_streak_protectors_$username',
+        _streakProtectors,
+      );
+      await preferences.setInt(
+        'korulab_star_multipliers_$username',
+        _starMultipliers,
+      );
+      await preferences.setInt(
+        'korulab_second_chances_$username',
+        _secondChances,
+      );
+      final lastLesson = _lastLessonDate;
+      if (lastLesson != null) {
+        await preferences.setString(
+          'korulab_last_lesson_$username',
+          lastLesson.toIso8601String(),
+        );
+      }
+    } catch (_) {}
+  }
+
+  bool buyHint() {
+    if (!_courseProgressLoaded || _ekostrellas < RewardShopPage.hintPrice) {
+      return false;
+    }
+    _ekostrellas -= RewardShopPage.hintPrice;
+    _hintCredits++;
+    unawaited(_saveUserProgress());
+    notifyListeners();
+    return true;
+  }
+
+  bool buyStreakProtector() {
+    if (!_courseProgressLoaded ||
+        _ekostrellas < RewardShopPage.streakProtectorPrice) {
+      return false;
+    }
+    _ekostrellas -= RewardShopPage.streakProtectorPrice;
+    _streakProtectors++;
+    unawaited(_saveUserProgress());
+    notifyListeners();
+    return true;
+  }
+
+  bool buyStarMultiplier() {
+    if (!_courseProgressLoaded ||
+        _ekostrellas < RewardShopPage.starMultiplierPrice) {
+      return false;
+    }
+    _ekostrellas -= RewardShopPage.starMultiplierPrice;
+    _starMultipliers++;
+    unawaited(_saveUserProgress());
+    notifyListeners();
+    return true;
+  }
+
+  bool buySecondChance() {
+    if (!_courseProgressLoaded ||
+        _ekostrellas < RewardShopPage.secondChancePrice) {
+      return false;
+    }
+    _ekostrellas -= RewardShopPage.secondChancePrice;
+    _secondChances++;
+    unawaited(_saveUserProgress());
+    notifyListeners();
+    return true;
+  }
+
+  bool useHint() {
+    if (_hintCredits <= 0) return false;
+    _hintCredits--;
+    unawaited(_saveUserProgress());
+    notifyListeners();
+    return true;
+  }
+
+  bool useSecondChance() {
+    if (_secondChances <= 0) return false;
+    _secondChances--;
+    unawaited(_saveUserProgress());
+    notifyListeners();
+    return true;
+  }
+
+  bool isTeacherLessonCompleted(int lessonId) {
+    return _completedActivityIds.contains('teacher:$lessonId');
+  }
+
+  bool completeTeacherLesson(int lessonId) {
+    if (!_courseProgressLoaded ||
+        !_completedActivityIds.add('teacher:$lessonId')) {
+      return false;
+    }
+    _recordLessonDay();
+    _correctAnswers++;
+    _totalAnswers++;
+    _completedLessons++;
+    if (_starMultipliers > 0) {
+      _starMultipliers--;
+      _ekostrellas += 100;
+    } else {
+      _ekostrellas += 50;
+    }
+    unawaited(_saveUserProgress());
+    notifyListeners();
+    return true;
+  }
+
+  void _recordLessonDay() {
     final today = DateTime.now();
     final todayDate = DateTime(today.year, today.month, today.day);
-
-    if (_lastLessonDate != todayDate) {
-      if (_lastLessonDate != null) {
-        final yesterday = todayDate.subtract(const Duration(days: 1));
-        if (_lastLessonDate == yesterday) {
-          _dailyStreak += 1;
-        } else {
-          _dailyStreak = 1;
-        }
-      } else {
-        _dailyStreak = 1;
-      }
-      _lastLessonDate = todayDate;
+    if (_lastLessonDate == todayDate) return;
+    if (_lastLessonDate == null) {
+      _dailyStreak = 1;
+    } else {
+      _activateMissedDayProtectors(todayDate);
+      final daysSinceLastLesson = todayDate.difference(_lastLessonDate!).inDays;
+      _dailyStreak = daysSinceLastLesson == 1 && _dailyStreak > 0
+          ? _dailyStreak + 1
+          : 1;
     }
+    _lastLessonDate = todayDate;
+  }
 
+  void reportLessonResult(int correct, int total,
+      {required LessonActivity activity}) {
+    _recordLessonDay();
     _correctAnswers += correct;
     _totalAnswers += total;
     _completedLessons += 1;
-    _ekostrellas += total > 0 ? (correct * 50 ~/ total) : 0;
+    final earnedStars = total > 0 ? (correct * 50 ~/ total) : 0;
+    if (_starMultipliers > 0) {
+      _starMultipliers--;
+      _ekostrellas += earnedStars * 2;
+    } else {
+      _ekostrellas += earnedStars;
+    }
+    _completedActivityIds.add(_activityProgressId(activity));
+    unawaited(_saveUserProgress());
     notifyListeners();
   }
 }
 
 final progressStats = ProgressStats();
 
+class RewardShopPage extends StatefulWidget {
+  static const int hintPrice = 25;
+  static const int streakProtectorPrice = 100;
+  static const int starMultiplierPrice = 75;
+  static const int secondChancePrice = 40;
+
+  final String username;
+
+  const RewardShopPage({super.key, required this.username});
+
+  @override
+  State<RewardShopPage> createState() => _RewardShopPageState();
+}
+
+class _RewardShopPageState extends State<RewardShopPage> {
+  @override
+  void initState() {
+    super.initState();
+    progressStats.loadCourseProgress(widget.username);
+  }
+
+  void _showPurchaseResult(bool purchased, String itemName) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          purchased
+              ? '$itemName añadido a tu inventario.'
+              : 'No tienes suficientes ekostrellas.',
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProductCard({
+    required IconData icon,
+    required String title,
+    required String description,
+    required int price,
+    required int owned,
+    required VoidCallback onPurchase,
+  }) {
+    final theme = Theme.of(context);
+    final canAfford = progressStats.ekostrellas >= price;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: theme.colorScheme.primary.withOpacity(0.18),
+                  child: Icon(icon, color: theme.colorScheme.primaryContainer),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+                Text('Tienes $owned'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              description,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: canAfford ? onPurchase : null,
+                icon: const Icon(Icons.shopping_bag_outlined),
+                label: Text('Canjear por $price ekostrellas'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
+      appBar: AppBar(
+        title: const Text('Tienda de recompensas'),
+        backgroundColor: theme.colorScheme.primary,
+        foregroundColor: theme.colorScheme.onPrimary,
+      ),
+      body: AnimatedBuilder(
+        animation: progressStats,
+        builder: (context, _) {
+          if (!progressStats.isCourseProgressLoaded) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text(
+                '${progressStats.ekostrellas} ekostrellas',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primaryContainer,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Canjea tus estrellas por ayudas para las lecciones y tu racha.',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 20),
+              _buildProductCard(
+                icon: Icons.lightbulb_outline,
+                title: 'Pista para una pregunta',
+                description:
+                    'Elimina una opción incorrecta en quizzes y actividades de completar.',
+                price: RewardShopPage.hintPrice,
+                owned: progressStats.hintCredits,
+                onPurchase: () => _showPurchaseResult(
+                  progressStats.buyHint(),
+                  'Pista',
+                ),
+              ),
+              _buildProductCard(
+                icon: Icons.stars_outlined,
+                title: 'Doble de ekostrellas',
+                description:
+                    'Duplica las ekostrellas de la próxima actividad que completes.',
+                price: RewardShopPage.starMultiplierPrice,
+                owned: progressStats.starMultipliers,
+                onPurchase: () => _showPurchaseResult(
+                  progressStats.buyStarMultiplier(),
+                  'Doble de ekostrellas',
+                ),
+              ),
+              _buildProductCard(
+                icon: Icons.replay,
+                title: 'Segundo intento',
+                description:
+                    'Después de una respuesta incorrecta, permite elegir de nuevo en quizzes y ejercicios de completar.',
+                price: RewardShopPage.secondChancePrice,
+                owned: progressStats.secondChances,
+                onPurchase: () => _showPurchaseResult(
+                  progressStats.buySecondChance(),
+                  'Segundo intento',
+                ),
+              ),
+              _buildProductCard(
+                icon: Icons.shield_outlined,
+                title: 'Protector de racha',
+                description:
+                    'Se activa automáticamente por cada día que no completes una lección.',
+                price: RewardShopPage.streakProtectorPrice,
+                owned: progressStats.streakProtectors,
+                onPurchase: () => _showPurchaseResult(
+                  progressStats.buyStreakProtector(),
+                  'Protector de racha',
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
 class DiscussionReply {
+  final int? id;
   final String author;
+  final String authorHandle;
+  final String authorRole;
+  final Uint8List? authorPhoto;
   final String message;
   final DateTime createdAt;
 
   DiscussionReply({
+    this.id,
     required this.author,
+    this.authorHandle = '',
+    this.authorRole = DBService.roleStudent,
+    this.authorPhoto,
     required this.message,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
@@ -1250,9 +1720,12 @@ class DiscussionReply {
 
 class DiscussionSpace {
   final int? id;
-  final String title;
-  final String description;
+  String title;
+  String description;
   final String author;
+  final String authorHandle;
+  final String authorRole;
+  final Uint8List? authorPhoto;
   final DateTime createdAt;
   final List<DiscussionReply> replies;
 
@@ -1261,6 +1734,9 @@ class DiscussionSpace {
     required this.title,
     required this.description,
     required this.author,
+    this.authorHandle = '',
+    this.authorRole = DBService.roleStudent,
+    this.authorPhoto,
     DateTime? createdAt,
     List<DiscussionReply>? replies,
   })  : createdAt = createdAt ?? DateTime.now(),
@@ -1282,15 +1758,26 @@ class HomePage extends StatefulWidget {
 
 // Estado de la página principal - gestiona navegación entre secciones y contenido dinámico
 class _HomePageState extends State<HomePage> {
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
   int _selectedIndex = 0;
+  late String _currentUsername;
+  String _displayName = '';
+  String _userRole = DBService.roleStudent;
+  bool _isAdmin = false;
+  bool _isTeacher = false;
+  Uint8List? _profilePhoto;
   final List<DiscussionSpace> _discussionSpaces = [
     DiscussionSpace(
       title: 'Ideas para cuidar el planeta',
       description: 'Comparte acciones sencillas que podemos aplicar cada día.',
-      author: 'Korulab',
+      author: DBService.koruColDisplayName,
+      authorHandle: DBService.koruColUsername,
+      authorRole: DBService.roleAdmin,
       replies: [
         DiscussionReply(
-          author: 'Korulab',
+          author: DBService.koruColDisplayName,
+          authorHandle: DBService.koruColUsername,
+          authorRole: DBService.roleAdmin,
           message: '¡Todas las ideas son bienvenidas!',
         ),
       ],
@@ -1298,15 +1785,57 @@ class _HomePageState extends State<HomePage> {
     DiscussionSpace(
       title: 'Preguntas sobre las lecciones',
       description: 'Ayuda a otros usuarios y resuelve tus dudas.',
-      author: 'Korulab',
+      author: DBService.koruColDisplayName,
+      authorHandle: DBService.koruColUsername,
+      authorRole: DBService.roleAdmin,
     ),
   ];
 
   @override
   void initState() {
     super.initState();
+    _currentUsername = DBService.normalizeUsername(widget.username);
     _loadDiscussionSpaces();
+    _loadProfilePhoto();
+    _loadUserProgress();
   }
+
+  Future<void> _loadUserProgress() async {
+    final activatedProtectors =
+        await progressStats.loadCourseProgress(_currentUsername);
+    if (!mounted || activatedProtectors == 0) return;
+    final protectorLabel = activatedProtectors == 1
+        ? 'protector de racha'
+        : 'protectores de racha';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Se activaron automáticamente $activatedProtectors $protectorLabel.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _loadProfilePhoto() async {
+    final profile = await DBService.getUserProfile(_currentUsername);
+    if (!mounted) return;
+    setState(() {
+      _profilePhoto = profile?['profile_photo'] as Uint8List?;
+      _currentUsername = DBService.normalizeUsername(
+        profile?['username'] as String? ?? _currentUsername,
+      );
+      _displayName = profile?['display_name'] as String? ?? '';
+      final role = profile?['role'] as String? ?? DBService.roleStudent;
+      _userRole = role;
+      _isAdmin = role == DBService.roleAdmin ||
+          (profile?['is_admin'] as int? ?? 0) == 1;
+      _isTeacher = role == DBService.roleTeacher;
+    });
+  }
+
+  String get _currentDisplayName => _displayName.trim().isEmpty
+      ? _currentUsername
+      : _displayName.trim();
 
   Future<void> _loadDiscussionSpaces() async {
     final storedSpaces = await DBService.getDiscussionSpaces();
@@ -1316,12 +1845,14 @@ class _HomePageState extends State<HomePage> {
           title: space.title,
           description: space.description,
           author: space.author,
+          authorHandle: space.authorHandle,
         );
         for (final reply in space.replies) {
           await DBService.addDiscussionReply(
             discussionId: id,
             author: reply.author,
             message: reply.message,
+            authorHandle: reply.authorHandle,
           );
         }
       }
@@ -1332,7 +1863,11 @@ class _HomePageState extends State<HomePage> {
     final loadedSpaces = storedSpaces.map((space) {
       final replies = (space['replies'] as List<Map<String, dynamic>>)
           .map((reply) => DiscussionReply(
+                id: reply['id'] as int?,
                 author: reply['author'] as String,
+                authorHandle: reply['author_handle'] as String? ?? '',
+                authorRole: reply['author_role'] as String? ?? DBService.roleStudent,
+                authorPhoto: reply['author_photo'] as Uint8List?,
                 message: reply['message'] as String,
                 createdAt: DateTime.tryParse(reply['created_at'] as String? ?? ''),
               ))
@@ -1342,6 +1877,9 @@ class _HomePageState extends State<HomePage> {
         title: space['title'] as String,
         description: space['description'] as String,
         author: space['author'] as String,
+        authorHandle: space['author_handle'] as String? ?? '',
+        authorRole: space['author_role'] as String? ?? DBService.roleStudent,
+        authorPhoto: space['author_photo'] as Uint8List?,
         replies: replies,
       );
     }).toList();
@@ -1356,7 +1894,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   static const _sectionTitles = [
-    'Lecciones',
+    'Página principal',
     'Aprende con Korucol',
     'Korublog',
   ];
@@ -1367,13 +1905,68 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  void _openRewardShop() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RewardShopPage(username: _currentUsername),
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SettingsPage(
+          username: _currentUsername,
+          displayName: _currentDisplayName,
+        ),
+      ),
+    );
+  }
+
+  void _openProfilePage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProfilePage(
+          username: _currentUsername,
+          onProfileChanged: _onProfileChanged,
+        ),
+      ),
+    );
+  }
+
+  void _openSupportPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SupportRequestPage(
+          username: _currentUsername,
+          displayName: _currentDisplayName,
+        ),
+      ),
+    );
+  }
+
+  void _onProfileChanged(String displayName, String username, Uint8List? photo) {
+    setState(() {
+      _displayName = displayName;
+      _currentUsername = username;
+      _profilePhoto = photo;
+    });
+    unawaited(progressStats.loadCourseProgress(username));
+    _loadDiscussionSpaces();
+  }
+
   Widget _buildLessonsSection(ThemeData theme) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Bienvenido, ${widget.username}',
+          Text('Bienvenido, $_currentDisplayName',
               style: theme.textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
           const SizedBox(height: 8),
@@ -1382,6 +1975,36 @@ class _HomePageState extends State<HomePage> {
               style: theme.textTheme.bodyLarge
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           const SizedBox(height: 20),
+          AnimatedBuilder(
+            animation: progressStats,
+            builder: (context, _) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.local_fire_department,
+                    color: Colors.orange.shade400,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Racha',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${progressStats.dailyStreak} días',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primaryContainer,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           const ProgressCard(),
           const SizedBox(height: 20),
           Text('Actividades especiales',
@@ -1392,35 +2015,39 @@ class _HomePageState extends State<HomePage> {
             children: [
               Expanded(
                 child: SpecialActivityCard(
-                  title: 'APRENDE CON KORUCOL',
-                  subtitle: 'Sesiones en vivo y actividades prácticas',
-                  icon: Icons.video_call,
-                  color: Colors.blue.shade600,
-                  onTap: () {
-                    _onItemTapped(1);
-                  },
+                  title: 'KORUCLASES',
+                  subtitle: 'Cursos y actividades sobre sostenibilidad',
+                  icon: Icons.menu_book,
+                  color: Colors.green.shade600,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => KoruclasesPage(
+                        username: _currentUsername,
+                      ),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: SpecialActivityCard(
-                  title: 'KORUBLOG',
-                  subtitle: 'Comparte ideas y conecta con otros',
-                  icon: Icons.forum,
-                  color: Colors.orange.shade600,
-                  onTap: () {
-                    _onItemTapped(2);
-                  },
+                  title: 'RETOS ECOLÓGICOS',
+                  subtitle: 'Pequeñas acciones para el día a día',
+                  icon: Icons.emoji_events,
+                  color: Colors.teal.shade600,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EcoChallengesPage(
+                        username: _currentUsername,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 30),
-          Text('Lecciones disponibles',
-              style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
-          const SizedBox(height: 12),
-          ...courses.map((course) => CourseCard(course: course)),
         ],
       ),
     );
@@ -1437,43 +2064,32 @@ class _HomePageState extends State<HomePage> {
                   fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
           const SizedBox(height: 8),
           Text(
-            'Explora talleres, retos y contenido exclusivo para aprender de manera divertida.',
+            'Ideas y consejos prácticos para cuidar el planeta en casa y en tu comunidad.',
             style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: SpecialActivityCard(
-                  title: 'Talleres en vivo',
-                  subtitle: 'Sesiones interactivas sobre sostenibilidad',
-                  icon: Icons.lightbulb,
-                  color: Colors.green.shade600,
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Talleres - Próximamente'))),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SpecialActivityCard(
-                  title: 'Retos ecológicos',
-                  subtitle: 'Pequeñas acciones para el día a día',
-                  icon: Icons.emoji_events,
-                  color: Colors.teal.shade600,
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Retos ecológicos - Próximamente'))),
-                ),
-              ),
-            ],
           ),
           const SizedBox(height: 30),
           Text('Contenido destacado',
               style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
           const SizedBox(height: 12),
-          _buildInfoCard(theme, 'Cómo cuidar el agua', 'Consejos prácticos para reducir el consumo.'),
-          _buildInfoCard(theme, 'Ahorro de energía', 'Aprende a usar menos electricidad en casa.'),
-          _buildInfoCard(theme, 'Reciclaje creativo', 'Proyectos fáciles con materiales reciclados.'),
+          _buildInfoCard(
+            theme,
+            'Cómo cuidar el agua',
+            'Acciones sencillas para gastar menos agua cada día.',
+            'Cierra el grifo mientras te cepillas los dientes o enjabonas los platos.\n\nPrefiere duchas cortas y reutiliza el agua limpia que dejas correr mientras se calienta para regar las plantas.\n\nRevisa si hay fugas: una llave que gotea puede desperdiciar muchos litros con el tiempo.',
+          ),
+          _buildInfoCard(
+            theme,
+            'Ahorro de energía',
+            'Reduce el consumo eléctrico sin complicar tu rutina.',
+            'Aprovecha la luz natural y apaga las luces al salir de una habitación.\n\nDesconecta cargadores y aparatos que no estés usando; algunos siguen consumiendo energía en espera.\n\nCuando puedas, lava con cargas completas y seca la ropa al aire libre.',
+          ),
+          _buildInfoCard(
+            theme,
+            'Reciclaje creativo',
+            'Reutiliza materiales antes de convertirlos en residuos.',
+            'Usa frascos limpios para guardar alimentos u organizar objetos pequeños.\n\nConvierte cajas de cartón en organizadores y transforma una camiseta vieja en una bolsa reutilizable.\n\nAntes de reciclar, separa los materiales y sigue las normas de recolección de tu localidad. Pilas y electrónicos deben llevarse a puntos especiales.',
+          ),
         ],
       ),
     );
@@ -1513,7 +2129,106 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> _editDiscussionSpace(DiscussionSpace space) async {
+    if (space.id == null) return;
+    final titleController = TextEditingController(text: space.title);
+    final descriptionController = TextEditingController(text: space.description);
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Editar publicación'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              maxLength: 60,
+              decoration: const InputDecoration(labelText: 'Título'),
+            ),
+            TextField(
+              controller: descriptionController,
+              maxLength: 180,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Descripción'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final title = titleController.text.trim();
+              final description = descriptionController.text.trim();
+              if (title.isEmpty || description.isEmpty) return;
+              Navigator.pop(dialogContext, [title, description]);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+    titleController.dispose();
+    descriptionController.dispose();
+    if (!mounted || result == null) return;
+
+    final updated = await DBService.updateDiscussionSpace(
+      discussionId: space.id!,
+      requesterUsername: _currentUsername,
+      title: result[0],
+      description: result[1],
+    );
+    if (!mounted) return;
+    if (!updated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No tienes permiso para editar esta publicación.')),
+      );
+      return;
+    }
+    await _loadDiscussionSpaces();
+  }
+
+  Future<void> _deleteDiscussionSpace(DiscussionSpace space) async {
+    if (space.id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Eliminar publicación'),
+        content: const Text('También se eliminarán sus comentarios. ¿Continuar?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final deleted = await DBService.deleteDiscussionSpace(
+      discussionId: space.id!,
+      requesterUsername: _currentUsername,
+    );
+    if (!mounted) return;
+    if (!deleted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No tienes permiso para eliminar esta publicación.')),
+      );
+      return;
+    }
+    await _loadDiscussionSpaces();
+  }
+
   Widget _buildDiscussionCard(ThemeData theme, DiscussionSpace space) {
+    final canManage = _isAdmin ||
+      _isTeacher ||
+        DBService.normalizeUsername(space.authorHandle) == _currentUsername;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
@@ -1521,21 +2236,77 @@ class _HomePageState extends State<HomePage> {
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         leading: CircleAvatar(
+          backgroundImage: space.authorPhoto == null
+            ? null
+            : MemoryImage(space.authorPhoto!),
           backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
-          child: Icon(Icons.forum, color: theme.colorScheme.primaryContainer),
+          child: space.authorPhoto == null
+            ? Icon(Icons.forum, color: theme.colorScheme.primaryContainer)
+            : null,
         ),
         title: Text(space.title,
             style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 6),
-          child: Text(
-            '${space.description}\n${space.author} · ${space.replies.length} respuestas',
-            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                space.description,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                space.author,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              if (space.authorHandle.isNotEmpty)
+                Text(
+                  '@${space.authorHandle}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              Text(
+                DBService.roleLabel(space.authorRole),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              Text(
+                '${space.replies.length} respuestas',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
         ),
         isThreeLine: true,
-        trailing: Icon(Icons.chevron_right, color: theme.colorScheme.primaryContainer),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (canManage)
+              PopupMenuButton<String>(
+                tooltip: 'Administrar publicación',
+                onSelected: (action) {
+                  if (action == 'edit') _editDiscussionSpace(space);
+                  if (action == 'delete') _deleteDiscussionSpace(space);
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('Editar')),
+                  PopupMenuItem(value: 'delete', child: Text('Eliminar')),
+                ],
+              ),
+            Icon(Icons.chevron_right, color: theme.colorScheme.primaryContainer),
+          ],
+        ),
         onTap: () => _openDiscussion(space),
       ),
     );
@@ -1592,23 +2363,39 @@ class _HomePageState extends State<HomePage> {
     descriptionController.dispose();
 
     if (!mounted || result == null) return;
-    final id = await DBService.createDiscussionSpace(
-      title: result[0],
-      description: result[1],
-      author: widget.username,
-    );
-    if (!mounted) return;
-    setState(() {
-      _discussionSpaces.insert(
-        0,
-        DiscussionSpace(
-          id: id,
-          title: result[0],
-          description: result[1],
-          author: widget.username,
+    var wasSaved = false;
+    try {
+      await DBService.createDiscussionSpace(
+        title: result[0],
+        description: result[1],
+        author: _currentDisplayName,
+        authorHandle: _currentUsername,
+      );
+      wasSaved = true;
+      await _loadDiscussionSpaces();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Publicación creada.')),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      if (wasSaved) {
+        try {
+          await _loadDiscussionSpaces();
+        } catch (_) {}
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            wasSaved
+                ? 'La publicación se guardó, pero no se pudo actualizar la lista.'
+                : 'No se pudo publicar. Comprueba los datos e inténtalo de nuevo.',
+          ),
         ),
       );
-    });
+    }
   }
 
   Future<void> _openDiscussion(DiscussionSpace space) async {
@@ -1617,14 +2404,20 @@ class _HomePageState extends State<HomePage> {
       MaterialPageRoute(
         builder: (_) => DiscussionPage(
           space: space,
-          username: widget.username,
+          username: _currentUsername,
+          displayName: _currentDisplayName,
+          userRole: _userRole,
+          authorPhoto: _profilePhoto,
+          isAdmin: _isAdmin,
+          isTeacher: _isTeacher,
         ),
       ),
     );
-    if (mounted) setState(() {});
+    if (mounted) await _loadDiscussionSpaces();
   }
 
-  Widget _buildInfoCard(ThemeData theme, String title, String subtitle) {
+  Widget _buildInfoCard(
+      ThemeData theme, String title, String subtitle, String details) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
@@ -1637,6 +2430,19 @@ class _HomePageState extends State<HomePage> {
         subtitle: Text(subtitle,
             style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         trailing: Icon(Icons.arrow_forward, color: theme.colorScheme.primaryContainer),
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(title),
+            content: SingleChildScrollView(child: Text(details)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cerrar'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1645,10 +2451,106 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: theme.colorScheme.surface,
+      drawer: Drawer(
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              DrawerHeader(
+                decoration: BoxDecoration(color: theme.colorScheme.primary),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 32,
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      backgroundImage: _profilePhoto == null
+                          ? null
+                          : MemoryImage(_profilePhoto!),
+                      child: _profilePhoto == null
+                          ? Icon(
+                              Icons.person,
+                              size: 32,
+                              color: theme.colorScheme.onPrimaryContainer,
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _currentDisplayName,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: theme.colorScheme.onPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            '@$_currentUsername',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onPrimary.withOpacity(0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.account_circle_outlined),
+                title: const Text('Mi perfil'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _openProfilePage();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.settings_outlined),
+                title: const Text('Ajustes'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _openSettings();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.support_agent),
+                title: const Text('PQRS'),
+                subtitle: const Text('Contactar a @koruadm'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _openSupportPage();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
       appBar: AppBar(
         backgroundColor: theme.colorScheme.primary,
         foregroundColor: theme.colorScheme.onPrimary,
+        leading: IconButton(
+          tooltip: 'Abrir menú de perfil',
+          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+          icon: CircleAvatar(
+            radius: 17,
+            backgroundColor: theme.colorScheme.primaryContainer,
+            backgroundImage:
+                _profilePhoto == null ? null : MemoryImage(_profilePhoto!),
+            child: _profilePhoto == null
+                ? Icon(
+                    Icons.person,
+                    size: 20,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  )
+                : null,
+          ),
+        ),
         title: Image.asset('assets/images/korulogo.png',
             height: 60,
             fit: BoxFit.contain,
@@ -1660,23 +2562,54 @@ class _HomePageState extends State<HomePage> {
             animation: progressStats,
             builder: (context, _) {
               return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.star, size: 20),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${progressStats.ekostrellas} ekostrellas',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onPrimary,
-                        fontWeight: FontWeight.bold,
+                    Tooltip(
+                      message: 'Racha diaria: ${progressStats.dailyStreak} días',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.local_fire_department, size: 20),
+                          const SizedBox(width: 3),
+                          Text(
+                            '${progressStats.dailyStreak}',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Tooltip(
+                      message: '${progressStats.ekostrellas} ekostrellas',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.star, size: 20),
+                          const SizedBox(width: 3),
+                          Text(
+                            '${progressStats.ekostrellas}',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               );
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.storefront_outlined),
+            tooltip: 'Tienda de recompensas',
+            onPressed: _openRewardShop,
           ),
           IconButton(
             icon: const Icon(Icons.logout),
@@ -1690,11 +2623,11 @@ class _HomePageState extends State<HomePage> {
                       '¿Estás seguro de que quieres cerrar sesión?'),
                   actions: [
                     TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        child: const Text('Cancelar')),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      child: const Text('Cancelar'),
+                    ),
                     TextButton(
                       onPressed: () async {
-                        // Cerrar sesión de la base de datos
                         await DBService.logout();
                         Navigator.of(ctx).pop();
                         if (mounted) {
@@ -1721,8 +2654,8 @@ class _HomePageState extends State<HomePage> {
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.school_outlined),
-            selectedIcon: Icon(Icons.school),
-            label: 'Lecciones',
+            selectedIcon: Icon(Icons.home),
+            label: 'Página principal',
           ),
           NavigationDestination(
             icon: Icon(Icons.video_library_outlined),
@@ -1766,29 +2699,42 @@ class ProgressCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Progreso de hoy',
+                Text('Progreso',
                     style: TextStyle(
                         fontWeight: FontWeight.bold, fontSize: 16, color: theme.colorScheme.onSurface)),
                 const SizedBox(height: 16),
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 12,
+                Row(
                   children: [
-                    _MetricBox(
-                      value: '${progressStats.completedLessons}/${progressStats.totalLessons}',
-                      label: 'Lecciones',
+                    Expanded(
+                      child: _ProgressRing(
+                        percentage: progressStats.totalLessons == 0
+                            ? 0
+                            : (progressStats.completedActivities * 100 ~/
+                                    progressStats.totalLessons)
+                                .clamp(0, 100)
+                                .toInt(),
+                        label: 'Lecciones hechas',
+                        color: theme.colorScheme.primaryContainer,
+                      ),
                     ),
-                    _MetricBox(
-                      value: '${progressStats.accuracyPercent}%',
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _ProgressRing(
+                        percentage: progressStats.accuracyPercent,
                       label: 'Precisión',
-                    ),
-                    _MetricBox(
-                      value: '${progressStats.dailyStreak}',
-                      label: 'Racha diaria',
+                        color: theme.colorScheme.secondary,
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
+                Text(
+                  '${progressStats.completedActivities} de ${progressStats.totalLessons} actividades completadas',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Text(
                     'Sigue avanzando para completar tu primera unidad.',
                     style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
@@ -1801,22 +2747,56 @@ class ProgressCard extends StatelessWidget {
   }
 }
 
-// Caja individual que muestra una métrica específica del progreso del usuario
-class _MetricBox extends StatelessWidget {
-  final String value;
+class _ProgressRing extends StatelessWidget {
+  final int percentage;
   final String label;
-  const _MetricBox({required this.value, required this.label});
+  final Color color;
+
+  const _ProgressRing({
+    required this.percentage,
+    required this.label,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(value,
-            style: theme.textTheme.headlineSmall
-                ?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.primaryContainer)),
-        Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        SizedBox(
+          width: 104,
+          height: 104,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              SizedBox.expand(
+                child: CircularProgressIndicator(
+                  value: percentage.clamp(0, 100) / 100,
+                  strokeWidth: 9,
+                  backgroundColor: theme.colorScheme.outlineVariant,
+                  color: color,
+                ),
+              ),
+              Text(
+                '$percentage%',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ],
     );
   }
@@ -1825,65 +2805,482 @@ class _MetricBox extends StatelessWidget {
 // ─────────────────────────────────────────────
 //  COURSE CARD
 // ─────────────────────────────────────────────
-// Tarjeta de curso - muestra un curso con su título, descripción e icono
-class CourseCard extends StatelessWidget {
-  final Course course;
-  const CourseCard({required this.course, super.key});
+// Catálogo de cursos y actividades disponibles en Koruclases
+class EcoChallengesPage extends StatefulWidget {
+  final String username;
+
+  const EcoChallengesPage({super.key, required this.username});
+
+  @override
+  State<EcoChallengesPage> createState() => _EcoChallengesPageState();
+}
+
+class _EcoChallengesPageState extends State<EcoChallengesPage> {
+  static const _challenges = <({String id, String title, String description, IconData icon})>[
+    (
+      id: 'bottle',
+      title: 'Usa una botella reutilizable',
+      description: 'Evita comprar una botella desechable hoy.',
+      icon: Icons.water_drop_outlined,
+    ),
+    (
+      id: 'recycle',
+      title: 'Separa tus residuos',
+      description: 'Clasifica papel, envases y residuos orgánicos.',
+      icon: Icons.recycling,
+    ),
+    (
+      id: 'lights',
+      title: 'Ahorra energía',
+      description: 'Apaga las luces y desconecta lo que no uses.',
+      icon: Icons.bolt,
+    ),
+    (
+      id: 'walk',
+      title: 'Elige movilidad sostenible',
+      description: 'Camina, usa bicicleta o transporte público en un trayecto.',
+      icon: Icons.directions_walk,
+    ),
+    (
+      id: 'food',
+      title: 'Reduce el desperdicio de comida',
+      description: 'Planifica una comida con lo que ya tienes en casa.',
+      icon: Icons.restaurant_outlined,
+    ),
+    (
+      id: 'reuse',
+      title: 'Dale otro uso a un objeto',
+      description: 'Reutiliza un envase, repara algo o comparte lo que no necesitas.',
+      icon: Icons.recycling_outlined,
+    ),
+  ];
+
+  late final String _progressKey = 'korulab_eco_challenges_${widget.username}';
+  final Set<String> _completed = {};
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProgress();
+  }
+
+  Future<void> _loadProgress() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final saved = preferences.getStringList(_progressKey) ?? [];
+      if (mounted) {
+        setState(() {
+          _completed.addAll(saved);
+        });
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _toggleChallenge(String id, bool? isCompleted) async {
+    setState(() {
+      if (isCompleted ?? false) {
+        _completed.add(id);
+      } else {
+        _completed.remove(id);
+      }
+    });
+
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setStringList(_progressKey, _completed.toList());
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo guardar el progreso.')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 14),
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-      elevation: 4,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () => Navigator.push(context,
-            MaterialPageRoute(builder: (_) => CoursePage(course: course))),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
+    final completedCount = _completed.length;
+
+    return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
+      appBar: AppBar(
+        title: const Text('Retos ecológicos'),
+        backgroundColor: theme.colorScheme.primary,
+        foregroundColor: theme.colorScheme.onPrimary,
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Text(
+                  'Un reto a tu ritmo',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Pequeñas acciones cotidianas también ayudan a cuidar el planeta.',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Card(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('$completedCount de ${_challenges.length} acciones completadas'),
+                        const SizedBox(height: 12),
+                        LinearProgressIndicator(
+                          value: completedCount / _challenges.length,
+                          minHeight: 8,
+                        ),
+                        if (completedCount == _challenges.length) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            '¡Reto completado! Gracias por ponerlo en práctica.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.primaryContainer,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ..._challenges.map((challenge) {
+                  final isCompleted = _completed.contains(challenge.id);
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
+                    child: CheckboxListTile(
+                      value: isCompleted,
+                      onChanged: (value) =>
+                          _toggleChallenge(challenge.id, value),
+                      controlAffinity: ListTileControlAffinity.trailing,
+                      secondary: Icon(
+                        challenge.icon,
+                        color: theme.colorScheme.primaryContainer,
+                      ),
+                      title: Text(challenge.title),
+                      subtitle: Text(challenge.description),
+                    ),
+                  );
+                }),
+              ],
+            ),
+    );
+  }
+}
+
+class KoruclasesPage extends StatefulWidget {
+  final String username;
+
+  const KoruclasesPage({super.key, required this.username});
+
+  @override
+  State<KoruclasesPage> createState() => _KoruclasesPageState();
+}
+
+class _KoruclasesPageState extends State<KoruclasesPage> {
+  List<Map<String, dynamic>> _teacherLessons = [];
+  bool _isLoadingTeacherLessons = true;
+
+  @override
+  void initState() {
+    super.initState();
+    progressStats.loadCourseProgress(widget.username);
+    _loadTeacherLessons();
+  }
+
+  Future<void> _loadTeacherLessons() async {
+    try {
+      final lessons = await DBService.getTeacherLessons();
+      if (!mounted) return;
+      setState(() {
+        _teacherLessons = lessons;
+        _isLoadingTeacherLessons = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingTeacherLessons = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
+      appBar: AppBar(
+        title: const Text('Koruclases'),
+        backgroundColor: theme.colorScheme.primary,
+        foregroundColor: theme.colorScheme.onPrimary,
+      ),
+      body: AnimatedBuilder(
+        animation: progressStats,
+        builder: (context, _) {
+          if (!progressStats.isCourseProgressLoaded || _isLoadingTeacherLessons) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return ListView(
+            padding: const EdgeInsets.all(16),
             children: [
-              Container(
-                decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: theme.colorScheme.outlineVariant, width: 2)),
-                child: CircleAvatar(
-                  radius: 28,
-                  backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
-                  child: Icon(course.icon,
-                      size: 28,
-                      color: theme.colorScheme.primaryContainer),
+              Text(
+                'Aprende a tu ritmo',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.onSurface,
                 ),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(course.title,
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
-                    const SizedBox(height: 6),
-                    Text(course.subtitle,
-                        style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                    const SizedBox(height: 4),
-                    Text('${course.activities.length} actividades',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(
-                                color: theme.colorScheme.primaryContainer,
-                                fontWeight: FontWeight.w600)),
-                  ],
+              const SizedBox(height: 8),
+              Text(
+                'Completa todas las actividades de un curso para desbloquear el siguiente.',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(height: 20),
+              ...courses.indexed.map(
+                (entry) => CourseCard(
+                  course: entry.$2,
+                  courseIndex: entry.$1,
+                ),
+              ),
+              if (_teacherLessons.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Text(
+                  'Lecciones de profesores',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ..._teacherLessons.map(
+                  (lesson) => _TeacherLessonCard(
+                    lesson: lesson,
+                  ),
+                ),
+              ],
             ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TeacherLessonCard extends StatelessWidget {
+  final Map<String, dynamic> lesson;
+
+  const _TeacherLessonCard({required this.lesson});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final lessonId = lesson['id'] as int;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.6),
+      child: ListTile(
+        leading: const CircleAvatar(child: Icon(Icons.menu_book_outlined)),
+        title: Text(lesson['title'] as String),
+        subtitle: Text(
+          '${lesson['summary']}\n${lesson['teacher_name'] ?? 'Profesor'}',
+        ),
+        isThreeLine: true,
+        trailing: AnimatedBuilder(
+          animation: progressStats,
+          builder: (context, _) => Icon(
+            progressStats.isTeacherLessonCompleted(lessonId)
+                ? Icons.check_circle_outline
+                : Icons.chevron_right,
+            color: theme.colorScheme.primaryContainer,
+          ),
+        ),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => _TeacherLessonPage(
+              lesson: lesson,
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _TeacherLessonPage extends StatelessWidget {
+  final Map<String, dynamic> lesson;
+
+  const _TeacherLessonPage({required this.lesson});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final lessonId = lesson['id'] as int;
+    return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
+      appBar: AppBar(
+        title: Text(lesson['title'] as String),
+        backgroundColor: theme.colorScheme.primary,
+        foregroundColor: theme.colorScheme.onPrimary,
+      ),
+      body: AnimatedBuilder(
+        animation: progressStats,
+        builder: (context, _) {
+          final isCompleted = progressStats.isTeacherLessonCompleted(lessonId);
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Text(
+                lesson['summary'] as String,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                lesson['content'] as String,
+                style: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
+              ),
+              const SizedBox(height: 28),
+              FilledButton.icon(
+                onPressed: isCompleted
+                    ? null
+                    : () {
+                        final completed =
+                            progressStats.completeTeacherLesson(lessonId);
+                        if (completed && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Lección completada. ¡Buen trabajo!'),
+                            ),
+                          );
+                        }
+                      },
+                icon: Icon(isCompleted ? Icons.check_circle : Icons.done),
+                label: Text(isCompleted ? 'Completada' : 'Marcar como completada'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// Tarjeta de curso - muestra su estado bloqueado o disponible
+class CourseCard extends StatelessWidget {
+  final Course course;
+  final int courseIndex;
+
+  const CourseCard({
+    required this.course,
+    required this.courseIndex,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AnimatedBuilder(
+      animation: progressStats,
+      builder: (context, _) {
+        final isUnlocked = progressStats.isCourseUnlocked(courseIndex);
+        return Card(
+          margin: const EdgeInsets.only(bottom: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+          elevation: 4,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: isUnlocked
+                ? () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CoursePage(
+                          course: course,
+                          courseIndex: courseIndex,
+                        ),
+                      ),
+                    )
+                : () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Completa el curso anterior para continuar.'),
+                      ),
+                    ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
+                    child: Icon(
+                      course.icon,
+                      size: 28,
+                      color: theme.colorScheme.primaryContainer,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          course.title,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          course.subtitle,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${course.activities.length} actividades',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.primaryContainer,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    isUnlocked ? Icons.chevron_right : Icons.lock_outline,
+                    color: isUnlocked
+                        ? theme.colorScheme.onSurfaceVariant
+                        : theme.colorScheme.error,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1956,10 +3353,20 @@ class SpecialActivityCard extends StatelessWidget {
 class DiscussionPage extends StatefulWidget {
   final DiscussionSpace space;
   final String username;
+  final String displayName;
+  final String userRole;
+  final Uint8List? authorPhoto;
+  final bool isAdmin;
+  final bool isTeacher;
 
   const DiscussionPage({
     required this.space,
     required this.username,
+    required this.displayName,
+    required this.userRole,
+    required this.authorPhoto,
+    required this.isAdmin,
+    required this.isTeacher,
     super.key,
   });
 
@@ -1970,22 +3377,242 @@ class DiscussionPage extends StatefulWidget {
 class _DiscussionPageState extends State<DiscussionPage> {
   final _replyController = TextEditingController();
 
+    bool get _canManageSpace => widget.isAdmin || widget.isTeacher ||
+      DBService.normalizeUsername(widget.space.authorHandle) ==
+          DBService.normalizeUsername(widget.username);
+
+    bool _canManageReply(DiscussionReply reply) =>
+      widget.isAdmin ||
+      widget.isTeacher ||
+      DBService.normalizeUsername(reply.authorHandle) ==
+          DBService.normalizeUsername(widget.username);
+
   Future<void> _submitReply() async {
     final message = _replyController.text.trim();
     if (message.isEmpty) return;
-    setState(() {
-      widget.space.replies.add(
-        DiscussionReply(author: widget.username, message: message),
-      );
-      _replyController.clear();
-    });
-    if (widget.space.id != null) {
-      await DBService.addDiscussionReply(
-        discussionId: widget.space.id!,
-        author: widget.username,
+    final discussionId = widget.space.id;
+    if (discussionId == null) return;
+    try {
+      final replyId = await DBService.addDiscussionReply(
+        discussionId: discussionId,
+        author: widget.displayName,
         message: message,
+        authorHandle: widget.username,
       );
+      if (!mounted) return;
+      setState(() {
+        widget.space.replies.add(
+        DiscussionReply(
+          id: replyId,
+          author: widget.displayName,
+          authorHandle: widget.username,
+          authorRole: widget.userRole,
+          authorPhoto: widget.authorPhoto,
+          message: message,
+        ),
+      );
+        _replyController.clear();
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo publicar el comentario.')),
+        );
+      }
     }
+  }
+
+  Future<void> _editSpace() async {
+    final titleController = TextEditingController(text: widget.space.title);
+    final descriptionController =
+        TextEditingController(text: widget.space.description);
+    final values = await showDialog<List<String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Editar publicación'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              maxLength: 60,
+              decoration: const InputDecoration(labelText: 'Título'),
+            ),
+            TextField(
+              controller: descriptionController,
+              maxLength: 180,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Descripción'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final title = titleController.text.trim();
+              final description = descriptionController.text.trim();
+              if (title.isEmpty || description.isEmpty) return;
+              Navigator.pop(dialogContext, [title, description]);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+    titleController.dispose();
+    descriptionController.dispose();
+    if (!mounted || values == null || widget.space.id == null) return;
+
+    final updated = await DBService.updateDiscussionSpace(
+      discussionId: widget.space.id!,
+      requesterUsername: widget.username,
+      title: values[0],
+      description: values[1],
+    );
+    if (!mounted) return;
+    if (!updated) {
+      _showDiscussionMessage('No tienes permiso para editar esta publicación.');
+      return;
+    }
+    setState(() {
+      widget.space.title = values[0];
+      widget.space.description = values[1];
+    });
+  }
+
+  Future<void> _deleteSpace() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Eliminar publicación'),
+        content: const Text('También se eliminarán sus comentarios. ¿Continuar?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted || widget.space.id == null) return;
+    final deleted = await DBService.deleteDiscussionSpace(
+      discussionId: widget.space.id!,
+      requesterUsername: widget.username,
+    );
+    if (!mounted) return;
+    if (!deleted) {
+      _showDiscussionMessage('No tienes permiso para eliminar esta publicación.');
+      return;
+    }
+    Navigator.pop(context, true);
+  }
+
+  Future<void> _editReply(DiscussionReply reply) async {
+    if (reply.id == null) return;
+    final controller = TextEditingController(text: reply.message);
+    final message = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Editar comentario'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 5,
+          maxLength: 1000,
+          decoration: const InputDecoration(
+            labelText: 'Comentario',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isEmpty) return;
+              Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || message == null) return;
+    final updated = await DBService.updateDiscussionReply(
+      replyId: reply.id!,
+      requesterUsername: widget.username,
+      message: message,
+    );
+    if (!mounted) return;
+    if (!updated) {
+      _showDiscussionMessage('No tienes permiso para editar este comentario.');
+      return;
+    }
+    final index = widget.space.replies.indexWhere((item) => item.id == reply.id);
+    if (index >= 0) {
+      setState(() {
+        widget.space.replies[index] = DiscussionReply(
+          id: reply.id,
+          author: reply.author,
+          authorHandle: reply.authorHandle,
+          authorPhoto: reply.authorPhoto,
+          message: message,
+          createdAt: reply.createdAt,
+        );
+      });
+    }
+  }
+
+  Future<void> _deleteReply(DiscussionReply reply) async {
+    if (reply.id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Eliminar comentario'),
+        content: const Text('¿Quieres eliminar este comentario?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final deleted = await DBService.deleteDiscussionReply(
+      replyId: reply.id!,
+      requesterUsername: widget.username,
+    );
+    if (!mounted) return;
+    if (!deleted) {
+      _showDiscussionMessage('No tienes permiso para eliminar este comentario.');
+      return;
+    }
+    setState(() {
+      widget.space.replies.removeWhere((item) => item.id == reply.id);
+    });
+  }
+
+  void _showDiscussionMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
@@ -2003,6 +3630,20 @@ class _DiscussionPageState extends State<DiscussionPage> {
         title: const Text('Espacio de discusión'),
         backgroundColor: theme.colorScheme.primary,
         foregroundColor: theme.colorScheme.onPrimary,
+        actions: [
+          if (_canManageSpace)
+            PopupMenuButton<String>(
+              tooltip: 'Administrar publicación',
+              onSelected: (action) {
+                if (action == 'edit') _editSpace();
+                if (action == 'delete') _deleteSpace();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'edit', child: Text('Editar publicación')),
+                PopupMenuItem(value: 'delete', child: Text('Eliminar publicación')),
+              ],
+            ),
+        ],
       ),
       body: Column(
         children: [
@@ -2024,6 +3665,52 @@ class _DiscussionPageState extends State<DiscussionPage> {
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      backgroundImage: widget.space.authorPhoto == null
+                          ? null
+                          : MemoryImage(widget.space.authorPhoto!),
+                      child: widget.space.authorPhoto == null
+                          ? Icon(
+                              Icons.person,
+                              color: theme.colorScheme.onPrimaryContainer,
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.space.author,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                          if (widget.space.authorHandle.isNotEmpty)
+                            Text(
+                              '@${widget.space.authorHandle}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          Text(
+                            DBService.roleLabel(widget.space.authorRole),
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 24),
                 Text(
                   'Respuestas (${widget.space.replies.length})',
@@ -2041,14 +3728,20 @@ class _DiscussionPageState extends State<DiscussionPage> {
                     ),
                   )
                 else
-                  ...widget.space.replies.map(
-                    (reply) => Card(
+                  ...widget.space.replies.map((reply) {
+                    final canManageReply = _canManageReply(reply);
+                    return Card(
                       margin: const EdgeInsets.only(bottom: 10),
                       color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
                       child: ListTile(
                         leading: CircleAvatar(
+                          backgroundImage: reply.authorPhoto == null
+                            ? null
+                            : MemoryImage(reply.authorPhoto!),
                           backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
-                          child: Icon(Icons.person, color: theme.colorScheme.primaryContainer),
+                          child: reply.authorPhoto == null
+                            ? Icon(Icons.person, color: theme.colorScheme.primaryContainer)
+                            : null,
                         ),
                         title: Text(
                           reply.author,
@@ -2056,11 +3749,50 @@ class _DiscussionPageState extends State<DiscussionPage> {
                         ),
                         subtitle: Padding(
                           padding: const EdgeInsets.only(top: 4),
-                          child: Text(reply.message),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(reply.message),
+                              if (reply.authorHandle.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  '@${reply.authorHandle}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                              Text(
+                                DBService.roleLabel(reply.authorRole),
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                        trailing: canManageReply
+                            ? PopupMenuButton<String>(
+                                tooltip: 'Administrar comentario',
+                                onSelected: (action) {
+                                  if (action == 'edit') _editReply(reply);
+                                  if (action == 'delete') _deleteReply(reply);
+                                },
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                    value: 'edit',
+                                    child: Text('Editar comentario'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'delete',
+                                    child: Text('Eliminar comentario'),
+                                  ),
+                                ],
+                              )
+                            : null,
                       ),
-                    ),
-                  ),
+                    );
+                  }),
               ],
             ),
           ),
@@ -2149,7 +3881,13 @@ String _activityLabel(ActivityType t) {
 // Página de detalle del curso - muestra todas las actividades de un curso específico
 class CoursePage extends StatelessWidget {
   final Course course;
-  const CoursePage({required this.course, super.key});
+  final int courseIndex;
+
+  const CoursePage({
+    required this.course,
+    required this.courseIndex,
+    super.key,
+  });
 
   Widget _buildActivityPage(LessonActivity activity) {
     if (activity is QuizActivity) return QuizPage(activity: activity);
@@ -2170,34 +3908,54 @@ class CoursePage extends StatelessWidget {
         backgroundColor: theme.colorScheme.primary,
         foregroundColor: theme.colorScheme.onPrimary,
       ),
-      body: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: course.activities.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final activity = course.activities[index];
-          final color = _activityColor(activity.type);
-          return ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-            tileColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-            leading: CircleAvatar(
-              backgroundColor: color.withOpacity(0.15),
-              child: Icon(_activityIcon(activity.type), color: color),
-            ),
-            title: Text(activity.title,
-                style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
-            subtitle: Text(_activityLabel(activity.type), style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
-            trailing: Icon(Icons.play_arrow, color: theme.colorScheme.primaryContainer),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => _buildActivityPage(activity)),
-            ),
-          );
-        },
+      body: AnimatedBuilder(
+        animation: progressStats,
+        builder: (context, _) => ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: course.activities.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final activity = course.activities[index];
+            final color = _activityColor(activity.type);
+            final isUnlocked = progressStats.isActivityUnlocked(activity);
+            return ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              tileColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+              leading: CircleAvatar(
+                backgroundColor: color.withOpacity(0.15),
+                child: Icon(_activityIcon(activity.type), color: color),
+              ),
+              title: Text(activity.title,
+                  style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+              subtitle: Text(_activityLabel(activity.type), style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+              trailing: Icon(
+                isUnlocked ? Icons.play_arrow : Icons.lock_outline,
+                color: isUnlocked
+                    ? theme.colorScheme.primaryContainer
+                    : theme.colorScheme.error,
+              ),
+              onTap: () {
+                if (!isUnlocked) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Completa la actividad anterior para continuar.'),
+                    ),
+                  );
+                  return;
+                }
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => _buildActivityPage(activity),
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -2286,6 +4044,7 @@ class _QuizPageState extends State<QuizPage> {
   int questionIndex = 0;
   int score = 0;
   int? selectedOption;
+  int? _hintedOptionIndex;
   bool completed = false;
   bool _reportedCompletion = false;
   late List<Question> shuffledQuestions;
@@ -2301,6 +4060,7 @@ class _QuizPageState extends State<QuizPage> {
       completed = false;
       questionIndex = 0;
       selectedOption = null;
+      _hintedOptionIndex = null;
       score = 0;
       _reportedCompletion = false;
       shuffledQuestions = List.from(widget.activity.questions)..shuffle();
@@ -2310,7 +4070,11 @@ class _QuizPageState extends State<QuizPage> {
   void _reportCompletion() {
     if (_reportedCompletion) return;
     _reportedCompletion = true;
-    progressStats.reportLessonResult(score, shuffledQuestions.length);
+    progressStats.reportLessonResult(
+      score,
+      shuffledQuestions.length,
+      activity: widget.activity,
+    );
   }
 
   void selectOption(int index) {
@@ -2319,6 +4083,27 @@ class _QuizPageState extends State<QuizPage> {
       selectedOption = index;
       if (shuffledQuestions[questionIndex].answerIndex == index) score++;
     });
+  }
+
+  void _useHint() {
+    if (selectedOption != null || _hintedOptionIndex != null) return;
+    final question = shuffledQuestions[questionIndex];
+    final wrongOptions = [
+      for (var index = 0; index < question.options.length; index++)
+        if (index != question.answerIndex) index,
+    ];
+    if (wrongOptions.isEmpty) return;
+    if (!progressStats.useHint()) return;
+    setState(() => _hintedOptionIndex = wrongOptions.first);
+  }
+
+  void _useSecondChance() {
+    if (selectedOption == null ||
+        shuffledQuestions[questionIndex].answerIndex == selectedOption) {
+      return;
+    }
+    if (!progressStats.useSecondChance()) return;
+    setState(() => selectedOption = null);
   }
 
   void nextQuestion() {
@@ -2332,6 +4117,7 @@ class _QuizPageState extends State<QuizPage> {
     setState(() {
       questionIndex++;
       selectedOption = null;
+      _hintedOptionIndex = null;
     });
   }
 
@@ -2378,11 +4164,32 @@ class _QuizPageState extends State<QuizPage> {
         Text(question.prompt,
             style: theme.textTheme.headlineSmall
                 ?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+        Align(
+          alignment: Alignment.centerRight,
+          child: selectedOption != null &&
+                  question.answerIndex != selectedOption &&
+                  progressStats.secondChances > 0
+              ? TextButton.icon(
+                  onPressed: _useSecondChance,
+                  icon: const Icon(Icons.replay),
+                  label: Text('Segundo intento (${progressStats.secondChances})'),
+                )
+              : TextButton.icon(
+                  onPressed: selectedOption != null ||
+                          _hintedOptionIndex != null ||
+                          progressStats.hintCredits == 0
+                      ? null
+                      : _useHint,
+                  icon: const Icon(Icons.lightbulb_outline),
+                  label: Text('Pista (${progressStats.hintCredits})'),
+                ),
+        ),
         const SizedBox(height: 24),
         ...List.generate(question.options.length, (index) {
           final option = question.options[index];
           final isSelected = selectedOption == index;
           final isCorrect = question.answerIndex == index;
+          final isEliminated = _hintedOptionIndex == index;
           Color? cardColor;
           Color? textColor;
           if (selectedOption != null) {
@@ -2392,17 +4199,18 @@ class _QuizPageState extends State<QuizPage> {
             } else if (isSelected && !isCorrect) {
               cardColor = Colors.red.shade800;
               textColor = Colors.white;
-            } else if (isCorrect) {
-              cardColor = Colors.green.shade900.withOpacity(0.5);
-              textColor = Colors.green.shade200;
             }
           }
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: cardColor ?? theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                foregroundColor: textColor ?? theme.colorScheme.onSurface,
+                backgroundColor: isEliminated
+                  ? theme.colorScheme.outlineVariant
+                  : cardColor ?? theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                foregroundColor: isEliminated
+                  ? theme.colorScheme.onSurfaceVariant
+                  : textColor ?? theme.colorScheme.onSurface,
                 padding: const EdgeInsets.symmetric(
                     vertical: 16, horizontal: 14),
                 shape: RoundedRectangleBorder(
@@ -2412,11 +4220,13 @@ class _QuizPageState extends State<QuizPage> {
                       width: 2,
                     )),
               ),
-              onPressed: () => selectOption(index),
+              onPressed: isEliminated ? null : () => selectOption(index),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(option,
-                    style: const TextStyle(fontSize: 16)),
+                child: Text(
+                  isEliminated ? '$option  ·  Descartada' : option,
+                  style: const TextStyle(fontSize: 16),
+                ),
               ),
             ),
           );
@@ -2489,7 +4299,11 @@ class _MatchingPageState extends State<MatchingPage> {
           completed = true;
           if (!_reportedCompletion) {
             _reportedCompletion = true;
-            progressStats.reportLessonResult(widget.activity.pairs.length, widget.activity.pairs.length);
+            progressStats.reportLessonResult(
+              widget.activity.pairs.length,
+              widget.activity.pairs.length,
+              activity: widget.activity,
+            );
           }
         }
       });
@@ -2705,7 +4519,11 @@ class _MemoryPageState extends State<MemoryPage> {
             completed = true;
             if (!_reportedCompletion) {
               _reportedCompletion = true;
-              progressStats.reportLessonResult(widget.activity.cards.length, widget.activity.cards.length);
+              progressStats.reportLessonResult(
+                widget.activity.cards.length,
+                widget.activity.cards.length,
+                activity: widget.activity,
+              );
             }
           }
         });
@@ -2842,6 +4660,7 @@ class _FillBlankPageState extends State<FillBlankPage> {
   int currentQuestionIndex = 0;
   int score = 0;
   int? selectedOptionIndex;
+  int? _hintedOptionIndex;
   bool completed = false;
   bool _reportedCompletion = false;
 
@@ -2850,6 +4669,7 @@ class _FillBlankPageState extends State<FillBlankPage> {
       currentQuestionIndex = 0;
       score = 0;
       selectedOptionIndex = null;
+      _hintedOptionIndex = null;
       completed = false;
       _reportedCompletion = false;
     });
@@ -2865,6 +4685,28 @@ class _FillBlankPageState extends State<FillBlankPage> {
     });
   }
 
+  void _useHint() {
+    if (selectedOptionIndex != null || _hintedOptionIndex != null) return;
+    final question = widget.activity.questions[currentQuestionIndex];
+    final wrongOptions = [
+      for (var index = 0; index < question.options.length; index++)
+        if (index != question.answerIndex) index,
+    ];
+    if (wrongOptions.isEmpty) return;
+    if (!progressStats.useHint()) return;
+    setState(() => _hintedOptionIndex = wrongOptions.first);
+  }
+
+  void _useSecondChance() {
+    if (selectedOptionIndex == null ||
+        widget.activity.questions[currentQuestionIndex].answerIndex ==
+            selectedOptionIndex) {
+      return;
+    }
+    if (!progressStats.useSecondChance()) return;
+    setState(() => selectedOptionIndex = null);
+  }
+
   void _nextQuestion() {
     if (currentQuestionIndex + 1 >= widget.activity.questions.length) {
       setState(() {
@@ -2872,12 +4714,17 @@ class _FillBlankPageState extends State<FillBlankPage> {
       });
       if (!_reportedCompletion) {
         _reportedCompletion = true;
-        progressStats.reportLessonResult(score, widget.activity.questions.length);
+        progressStats.reportLessonResult(
+          score,
+          widget.activity.questions.length,
+          activity: widget.activity,
+        );
       }
     } else {
       setState(() {
         currentQuestionIndex++;
         selectedOptionIndex = null;
+        _hintedOptionIndex = null;
       });
     }
   }
@@ -2976,11 +4823,32 @@ class _FillBlankPageState extends State<FillBlankPage> {
             ),
           ),
         ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: selectedOptionIndex != null &&
+                  q.answerIndex != selectedOptionIndex &&
+                  progressStats.secondChances > 0
+              ? TextButton.icon(
+                  onPressed: _useSecondChance,
+                  icon: const Icon(Icons.replay),
+                  label: Text('Segundo intento (${progressStats.secondChances})'),
+                )
+              : TextButton.icon(
+                  onPressed: selectedOptionIndex != null ||
+                          _hintedOptionIndex != null ||
+                          progressStats.hintCredits == 0
+                      ? null
+                      : _useHint,
+                  icon: const Icon(Icons.lightbulb_outline),
+                  label: Text('Pista (${progressStats.hintCredits})'),
+                ),
+        ),
         const SizedBox(height: 40),
         ...List.generate(q.options.length, (index) {
           final option = q.options[index];
           final isSelected = selectedOptionIndex == index;
           final isCorrect = q.answerIndex == index;
+          final isEliminated = _hintedOptionIndex == index;
           Color? cardColor;
           Color? textColor;
           if (selectedOptionIndex != null) {
@@ -2990,17 +4858,18 @@ class _FillBlankPageState extends State<FillBlankPage> {
             } else if (isSelected && !isCorrect) {
               cardColor = Colors.red.shade800;
               textColor = Colors.white;
-            } else if (isCorrect) {
-              cardColor = Colors.green.shade900.withOpacity(0.5);
-              textColor = Colors.green.shade200;
             }
           }
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: cardColor ?? theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                foregroundColor: textColor ?? theme.colorScheme.onSurface,
+                backgroundColor: isEliminated
+                  ? theme.colorScheme.outlineVariant
+                  : cardColor ?? theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                foregroundColor: isEliminated
+                  ? theme.colorScheme.onSurfaceVariant
+                  : textColor ?? theme.colorScheme.onSurface,
                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -3010,10 +4879,13 @@ class _FillBlankPageState extends State<FillBlankPage> {
                   ),
                 ),
               ),
-              onPressed: () => _selectOption(index),
+              onPressed: isEliminated ? null : () => _selectOption(index),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(option, style: const TextStyle(fontSize: 16)),
+                child: Text(
+                  isEliminated ? '$option  ·  Descartada' : option,
+                  style: const TextStyle(fontSize: 16),
+                ),
               ),
             ),
           );
@@ -3078,7 +4950,11 @@ class _SortingPageState extends State<SortingPage> {
       });
       if (!_reportedCompletion) {
         _reportedCompletion = true;
-        progressStats.reportLessonResult(widget.activity.correctOrder.length, widget.activity.correctOrder.length);
+        progressStats.reportLessonResult(
+          widget.activity.correctOrder.length,
+          widget.activity.correctOrder.length,
+          activity: widget.activity,
+        );
       }
     } else {
       setState(() {
@@ -3159,8 +5035,8 @@ class _SortingPageState extends State<SortingPage> {
                             key: ValueKey(step),
                             margin: const EdgeInsets.only(bottom: 12),
                             color: hasError
-                                ? Colors.red.shade900.withOpacity(0.5)
-                                : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                              ? Colors.red.shade900.withOpacity(0.5)
+                              : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                               side: BorderSide(
