@@ -77,21 +77,24 @@ class _RegisterPageState extends State<RegisterPage> {
       );
 
       if (success) {
-        _showSnackBar('¡Registro exitoso! Inicia sesión');
-        Future.delayed(const Duration(seconds: 1), () {
-          Navigator.of(context).pop();
-        });
+        if (!mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.of(context).pop();
+        messenger.showSnackBar(
+          const SnackBar(content: Text('¡Registro exitoso! Inicia sesión')),
+        );
       } else {
         _showSnackBar('Error al registrar el usuario');
       }
     } catch (e) {
-      _showSnackBar('Error: $e');
+      _showSnackBar(e is StateError ? e.message : 'Error: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _showSnackBar(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );

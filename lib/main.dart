@@ -1,17 +1,18 @@
 ﻿import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'db_service.dart';
 import 'register_page.dart';
 import 'splash_page.dart';
 import 'profile_page.dart';
 import 'support_pages.dart';
+import 'teacher_courses.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await DBService.ensureAdminAccount();
-  await DBService.ensureKoruColAccount();
+  await DBService.init();
   runApp(const KoruApp());
 }
 
@@ -78,7 +79,7 @@ class KoruApp extends StatelessWidget {
           outline: Color(0xFF758E77),
           // Variante del contorno - para bordes más suaves
           outlineVariant: Color(0xFF3F5E44),
-          
+
           // Color de sombra - para sombras y profundidad
           shadow: Color(0xFF000000),
           // Color de oscurecimiento - para overlays y modales
@@ -216,7 +217,9 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 8),
               Text(
                 'Inicia sesión para continuar',
-                style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 40),
@@ -275,7 +278,8 @@ class _LoginPageState extends State<LoginPage> {
                               AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
-                    : const Text('Iniciar sesión',
+                    : const Text(
+                        'Iniciar sesión',
                         style: TextStyle(
                             fontSize: 16, fontWeight: FontWeight.bold)),
               ),
@@ -306,6 +310,20 @@ class _LoginPageState extends State<LoginPage> {
 // ─────────────────────────────────────────────
 //  MODELOS DE DATOS
 // ─────────────────────────────────────────────
+
+// Convierte un id de progreso ("curso:actividad") en un nombre legible.
+String describeActivityId(String id) {
+  final parts = id.split(':');
+  if (parts.length == 2) {
+    final c = int.tryParse(parts[0]);
+    final a = int.tryParse(parts[1]);
+    if (c != null && a != null && c < courses.length &&
+        a < courses[c].activities.length) {
+      return '${courses[c].title} · ${courses[c].activities[a].title}';
+    }
+  }
+  return id;
+}
 
 // Representa un curso con su título, ícono y lista de actividades de aprendizaje
 class Course {
@@ -381,7 +399,7 @@ class MemoryCard {
 class FillBlankActivity extends LessonActivity {
   final List<FillBlankQuestion> questions;
   const FillBlankActivity({required super.title, required this.questions})
-      : super(type: ActivityType.fillBlank);
+    : super(type: ActivityType.fillBlank);
 }
 
 // Representa una pregunta de espacios en blanco con opciones de respuesta
@@ -504,8 +522,7 @@ final courses = <Course>[
         title: 'Quiz: ¿Qué reciclar?',
         questions: [
           const Question(
-            prompt:
-                '¿Qué material se puede reciclar en el contenedor azul?',
+            prompt: '¿Qué material se puede reciclar en el contenedor azul?',
             options: [
               'Papel y cartón',
               'Restos de comida',
@@ -520,7 +537,7 @@ final courses = <Course>[
               'Usar bolsas reutilizables',
               'Comprar plástico de un solo uso',
               'Tirar todo junto',
-              'Usar más servilletas'
+              'Usar más servilletas',
             ],
             answerIndex: 0,
           ),
@@ -609,7 +626,7 @@ final courses = <Course>[
               'Fotosíntesis',
               'Respiración',
               'Digestión',
-              'Evaporación'
+              'Evaporación',
             ],
             answerIndex: 0,
           ),
@@ -733,7 +750,8 @@ final courses = <Course>[
             answerIndex: 0,
           ),
           const FillBlankQuestion(
-            sentence: 'La contaminación del aire causa problemas en el sistema ___.',
+            sentence:
+                'La contaminación del aire causa problemas en el sistema ___.',
             options: ['respiratorio', 'digestivo', 'nervioso', 'óseo'],
             answerIndex: 0,
           ),
@@ -811,7 +829,8 @@ final courses = <Course>[
             answerIndex: 0,
           ),
           const FillBlankQuestion(
-            sentence: 'La contaminación del agua afecta principalmente a los ___.',
+            sentence:
+                'La contaminación del agua afecta principalmente a los ___.',
             options: ['organismos acuáticos', 'árboles', 'pájaros', 'insectos'],
             answerIndex: 0,
           ),
@@ -864,7 +883,7 @@ final courses = <Course>[
               'Reducción de nutrientes',
               'Aumento de producción',
               'Mejor retención de agua',
-              'Mayor fertilidad'
+              'Mayor fertilidad',
             ],
             answerIndex: 0,
           ),
@@ -952,7 +971,7 @@ final courses = <Course>[
               'Tres flechas en triángulo',
               'Círculo verde',
               'Mano abierta',
-              'Hoja verde'
+              'Hoja verde',
             ],
             answerIndex: 0,
           ),
@@ -1025,7 +1044,7 @@ final courses = <Course>[
               'Emisiones de gases de efecto invernadero',
               'Rotación de la Tierra',
               'Lluvia',
-              'Actividad volcánica'
+              'Actividad volcánica',
             ],
             answerIndex: 0,
           ),
@@ -1113,7 +1132,7 @@ final courses = <Course>[
               'Comprar solo lo necesario',
               'Comprar todo lo que ves',
               'No comprar nada',
-              'Comprar por comprar'
+              'Comprar por comprar',
             ],
             answerIndex: 0,
           ),
@@ -1133,7 +1152,7 @@ final courses = <Course>[
               'Generación de residuos',
               'Menor contaminación',
               'Más espacio verde',
-              'Mejor biodiversidad'
+              'Mejor biodiversidad',
             ],
             answerIndex: 0,
           ),
@@ -1249,6 +1268,7 @@ class ProgressStats extends ChangeNotifier {
 
     var activatedProtectors = 0;
     try {
+      await DBService.pullProgress(username);
       final preferences = await SharedPreferences.getInstance();
       if (_progressUsername == username) {
         _completedActivityIds.addAll(
@@ -1266,7 +1286,7 @@ class ProgressStats extends ChangeNotifier {
         _streakProtectors =
             preferences.getInt('korulab_streak_protectors_$username') ?? 0;
         _starMultipliers =
-          preferences.getInt('korulab_star_multipliers_$username') ?? 0;
+            preferences.getInt('korulab_star_multipliers_$username') ?? 0;
         _secondChances =
           preferences.getInt('korulab_second_chances_$username') ?? 0;
         final savedDate = preferences.getString('korulab_last_lesson_$username');
@@ -1322,7 +1342,11 @@ class ProgressStats extends ChangeNotifier {
     return true;
   }
 
+  // Actividades de cursos de profesores -> id de progreso.
+  final Map<LessonActivity, String> customActivityIds = {};
+
   bool isActivityUnlocked(LessonActivity activity) {
+    if (customActivityIds.containsKey(activity)) return true;
     for (var courseIndex = 0; courseIndex < courses.length; courseIndex++) {
       for (var activityIndex = 0;
           activityIndex < courses[courseIndex].activities.length;
@@ -1338,6 +1362,8 @@ class ProgressStats extends ChangeNotifier {
   }
 
   String _activityProgressId(LessonActivity activity) {
+    final customId = customActivityIds[activity];
+    if (customId != null) return customId;
     for (var courseIndex = 0; courseIndex < courses.length; courseIndex++) {
       final activityIndex = courses[courseIndex].activities.indexOf(activity);
       if (activityIndex >= 0) return '$courseIndex:$activityIndex';
@@ -1389,6 +1415,7 @@ class ProgressStats extends ChangeNotifier {
         );
       }
     } catch (_) {}
+    unawaited(DBService.pushProgress(username));
   }
 
   bool buyHint() {
@@ -1796,13 +1823,16 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _currentUsername = DBService.normalizeUsername(widget.username);
     _loadDiscussionSpaces();
+    _loadKorucolNotes();
+    _loadRole();
     _loadProfilePhoto();
     _loadUserProgress();
   }
 
   Future<void> _loadUserProgress() async {
-    final activatedProtectors =
-        await progressStats.loadCourseProgress(_currentUsername);
+    final activatedProtectors = await progressStats.loadCourseProgress(
+      _currentUsername,
+    );
     if (!mounted || activatedProtectors == 0) return;
     final protectorLabel = activatedProtectors == 1
         ? 'protector de racha'
@@ -1839,26 +1869,6 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadDiscussionSpaces() async {
     final storedSpaces = await DBService.getDiscussionSpaces();
-    if (storedSpaces.isEmpty) {
-      for (final space in _discussionSpaces) {
-        final id = await DBService.createDiscussionSpace(
-          title: space.title,
-          description: space.description,
-          author: space.author,
-          authorHandle: space.authorHandle,
-        );
-        for (final reply in space.replies) {
-          await DBService.addDiscussionReply(
-            discussionId: id,
-            author: reply.author,
-            message: reply.message,
-            authorHandle: reply.authorHandle,
-          );
-        }
-      }
-      await _loadDiscussionSpaces();
-      return;
-    }
 
     final loadedSpaces = storedSpaces.map((space) {
       final replies = (space['replies'] as List<Map<String, dynamic>>)
@@ -1903,6 +1913,19 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _selectedIndex = index;
     });
+    if (index == 1) _loadKorucolNotes();
+  }
+
+  List<Map<String, dynamic>> _korucolNotes = [];
+
+  Future<void> _loadKorucolNotes() async {
+    try {
+      final notes = await loadManageableLessons(
+        _currentUsername,
+        DBService.lessonDestinationKorucol,
+      );
+      if (mounted) setState(() => _korucolNotes = notes);
+    } catch (_) {}
   }
 
   void _openRewardShop() {
@@ -1938,8 +1961,54 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _openSupportPage() {
+  String _role = DBService.roleStudent;
+
+  Future<void> _loadRole() async {
+    final role = await DBService.getUserRole(_currentUsername);
+    if (mounted && role != _role) setState(() => _role = role);
+  }
+
+  void _openSupportReview() {
     Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SupportReviewPage(adminUsername: _currentUsername),
+      ),
+    );
+  }
+
+  Future<void> _openCreateCourse() async {
+    final created = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TeacherCourseEditorPage(username: _currentUsername),
+      ),
+    );
+    if (!mounted || created != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Curso publicado en Koruclases.')),
+    );
+  }
+
+  Future<void> _openCreateLesson() async {
+    final created = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateTeacherLessonPage(
+          teacherUsername: _currentUsername,
+        ),
+      ),
+    );
+    if (!mounted || created != true) return;
+    await _loadKorucolNotes();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('La lección se publicó.')),
+    );
+  }
+
+  Future<void> _openSupportPage() async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => SupportRequestPage(
@@ -1948,9 +2017,14 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+    if (mounted) await _loadKorucolNotes();
   }
 
-  void _onProfileChanged(String displayName, String username, Uint8List? photo) {
+  void _onProfileChanged(
+    String displayName,
+    String username,
+    Uint8List? photo,
+  ) {
     setState(() {
       _displayName = displayName;
       _currentUsername = username;
@@ -1958,6 +2032,8 @@ class _HomePageState extends State<HomePage> {
     });
     unawaited(progressStats.loadCourseProgress(username));
     _loadDiscussionSpaces();
+    _loadKorucolNotes();
+    _loadRole();
   }
 
   Widget _buildLessonsSection(ThemeData theme) {
@@ -2022,9 +2098,8 @@ class _HomePageState extends State<HomePage> {
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => KoruclasesPage(
-                        username: _currentUsername,
-                      ),
+                      builder: (_) =>
+                          KoruclasesPage(username: _currentUsername),
                     ),
                   ),
                 ),
@@ -2068,9 +2143,13 @@ class _HomePageState extends State<HomePage> {
             style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 30),
-          Text('Contenido destacado',
-              style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
+          Text(
+            'Contenido destacado',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
           const SizedBox(height: 12),
           _buildInfoCard(
             theme,
@@ -2090,8 +2169,34 @@ class _HomePageState extends State<HomePage> {
             'Reutiliza materiales antes de convertirlos en residuos.',
             'Usa frascos limpios para guardar alimentos u organizar objetos pequeños.\n\nConvierte cajas de cartón en organizadores y transforma una camiseta vieja en una bolsa reutilizable.\n\nAntes de reciclar, separa los materiales y sigue las normas de recolección de tu localidad. Pilas y electrónicos deben llevarse a puntos especiales.',
           ),
+          ..._korucolNotes.map((note) => _buildKorucolNoteCard(theme, note)),
         ],
       ),
+    );
+  }
+
+  Widget _buildKorucolNoteCard(ThemeData theme, Map<String, dynamic> note) {
+    final author = note['teacher_name'] ?? 'Profesor';
+    final card = _buildInfoCard(
+      theme,
+      note['title'] as String,
+      '${note['summary']}\nPor $author',
+      note['content'] as String,
+    );
+    if (note['can_manage'] != true) return card;
+    return Stack(
+      children: [
+        card,
+        Positioned(
+          top: 0,
+          right: 36,
+          child: TeacherLessonMenu(
+            lesson: note,
+            username: _currentUsername,
+            onChanged: _loadKorucolNotes,
+          ),
+        ),
+      ],
     );
   }
 
@@ -2123,7 +2228,9 @@ class _HomePageState extends State<HomePage> {
               style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
           const SizedBox(height: 12),
-          ..._discussionSpaces.map((space) => _buildDiscussionCard(theme, space)),
+          ..._discussionSpaces.map(
+            (space) => _buildDiscussionCard(theme, space),
+          ),
         ],
       ),
     );
@@ -2170,8 +2277,6 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
-    titleController.dispose();
-    descriptionController.dispose();
     if (!mounted || result == null) return;
 
     final updated = await DBService.updateDiscussionSpace(
@@ -2241,12 +2346,16 @@ class _HomePageState extends State<HomePage> {
             : MemoryImage(space.authorPhoto!),
           backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
           child: space.authorPhoto == null
-            ? Icon(Icons.forum, color: theme.colorScheme.primaryContainer)
-            : null,
+              ? Icon(Icons.forum, color: theme.colorScheme.primaryContainer)
+              : null,
         ),
-        title: Text(space.title,
-            style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+        title: Text(
+          space.title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Column(
@@ -2304,7 +2413,10 @@ class _HomePageState extends State<HomePage> {
                   PopupMenuItem(value: 'delete', child: Text('Eliminar')),
                 ],
               ),
-            Icon(Icons.chevron_right, color: theme.colorScheme.primaryContainer),
+            Icon(
+              Icons.chevron_right,
+              color: theme.colorScheme.primaryContainer,
+            ),
           ],
         ),
         onTap: () => _openDiscussion(space),
@@ -2359,9 +2471,6 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
-    titleController.dispose();
-    descriptionController.dispose();
-
     if (!mounted || result == null) return;
     var wasSaved = false;
     try {
@@ -2452,6 +2561,9 @@ class _HomePageState extends State<HomePage> {
     final theme = Theme.of(context);
     return Scaffold(
       key: _scaffoldKey,
+      onDrawerChanged: (open) {
+        if (open) _loadRole();
+      },
       backgroundColor: theme.colorScheme.surface,
       drawer: Drawer(
         child: SafeArea(
@@ -2518,15 +2630,46 @@ class _HomePageState extends State<HomePage> {
                   _openSettings();
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.support_agent),
-                title: const Text('PQRS'),
-                subtitle: const Text('Contactar a @koruadm'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openSupportPage();
-                },
-              ),
+              if (_role != DBService.roleAdmin)
+                ListTile(
+                  leading: const Icon(Icons.support_agent),
+                  title: const Text('PQRS'),
+                  subtitle: const Text('Contactar a @koruadm'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openSupportPage();
+                  },
+                ),
+              if (_role == DBService.roleAdmin)
+                ListTile(
+                  leading: const Icon(Icons.inbox_outlined),
+                  title: const Text('Revisión de PQRS'),
+                  subtitle: const Text('Solicitudes recibidas'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openSupportReview();
+                  },
+                ),
+              if (_role == DBService.roleTeacher)
+                ListTile(
+                  leading: const Icon(Icons.dashboard_customize_outlined),
+                  title: const Text('Crear curso'),
+                  subtitle: const Text('Con minijuegos para Koruclases'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openCreateCourse();
+                  },
+                ),
+              if (_role == DBService.roleTeacher)
+                ListTile(
+                  leading: const Icon(Icons.library_add_outlined),
+                  title: const Text('Crear lección'),
+                  subtitle: const Text('Publicar en Koruclases o Korucol'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openCreateLesson();
+                  },
+                ),
             ],
           ),
         ),
@@ -2620,7 +2763,8 @@ class _HomePageState extends State<HomePage> {
                 builder: (ctx) => AlertDialog(
                   title: const Text('Cerrar sesión'),
                   content: const Text(
-                      '¿Estás seguro de que quieres cerrar sesión?'),
+                    '¿Estás seguro de que quieres cerrar sesión?',
+                  ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(ctx).pop(),
@@ -2892,6 +3036,7 @@ class _EcoChallengesPageState extends State<EcoChallengesPage> {
     try {
       final preferences = await SharedPreferences.getInstance();
       await preferences.setStringList(_progressKey, _completed.toList());
+      unawaited(DBService.pushProgress(widget.username));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2940,7 +3085,9 @@ class _EcoChallengesPageState extends State<EcoChallengesPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('$completedCount de ${_challenges.length} acciones completadas'),
+                        Text(
+                          '$completedCount de ${_challenges.length} acciones completadas',
+                        ),
                         const SizedBox(height: 12),
                         LinearProgressIndicator(
                           value: completedCount / _challenges.length,
@@ -2965,21 +3112,430 @@ class _EcoChallengesPageState extends State<EcoChallengesPage> {
                   final isCompleted = _completed.contains(challenge.id);
                   return Card(
                     margin: const EdgeInsets.only(bottom: 10),
-                    color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
-                    child: CheckboxListTile(
-                      value: isCompleted,
-                      onChanged: (value) =>
-                          _toggleChallenge(challenge.id, value),
-                      controlAffinity: ListTileControlAffinity.trailing,
-                      secondary: Icon(
-                        challenge.icon,
-                        color: theme.colorScheme.primaryContainer,
-                      ),
-                      title: Text(challenge.title),
-                      subtitle: Text(challenge.description),
+                    color: theme.colorScheme.surfaceContainerHighest
+                        .withOpacity(0.65),
+                    child: Column(
+                      children: [
+                        CheckboxListTile(
+                          value: isCompleted,
+                          onChanged: (value) =>
+                              _toggleChallenge(challenge.id, value),
+                          controlAffinity: ListTileControlAffinity.trailing,
+                          secondary: Icon(
+                            challenge.icon,
+                            color: theme.colorScheme.primaryContainer,
+                          ),
+                          title: Text(challenge.title),
+                          subtitle: Text(challenge.description),
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 16, bottom: 8),
+                            child: TextButton.icon(
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => EcoChallengeJournalPage(
+                                      username: widget.username,
+                                      challengeId: challenge.id,
+                                      challengeTitle: challenge.title,
+                                    ),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.menu_book_outlined),
+                              label: const Text('Abrir diario'),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 }),
+              ],
+            ),
+    );
+  }
+}
+
+class EcoChallengeJournalPage extends StatefulWidget {
+  final String username;
+  final String challengeId;
+  final String challengeTitle;
+
+  const EcoChallengeJournalPage({
+    super.key,
+    required this.username,
+    required this.challengeId,
+    required this.challengeTitle,
+  });
+
+  @override
+  State<EcoChallengeJournalPage> createState() =>
+      _EcoChallengeJournalPageState();
+}
+
+class _EcoChallengeJournalPageState extends State<EcoChallengeJournalPage> {
+  final _imagePicker = ImagePicker();
+  List<Map<String, dynamic>> _entries = [];
+  bool _isLoading = true;
+  bool _loadError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEntries();
+  }
+
+  Future<void> _loadEntries() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = false;
+    });
+    try {
+      final entries = await DBService.getEcoJournalEntries(
+        username: widget.username,
+        challengeId: widget.challengeId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _entries = entries;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _loadError = true;
+      });
+    }
+  }
+
+  Future<void> _addEntry() async {
+    final noteController = TextEditingController();
+    final photos = <Uint8List>[];
+    try {
+      final shouldSave = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (context, setModalState) => Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 8,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Nueva nota del día',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '¿Qué hiciste hoy y cómo ayudó a este reto?',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: noteController,
+                    minLines: 4,
+                    maxLines: 7,
+                    maxLength: 1000,
+                    decoration: const InputDecoration(
+                      labelText: 'Tu experiencia',
+                      hintText: 'Escribe los detalles de tu proceso...',
+                      border: OutlineInputBorder(),
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      try {
+                        final images = await _imagePicker.pickMultiImage(
+                          maxWidth: 1600,
+                          maxHeight: 1600,
+                          imageQuality: 85,
+                        );
+                        for (final image in images) {
+                          photos.add(await image.readAsBytes());
+                        }
+                        if (sheetContext.mounted) {
+                          setModalState(() {});
+                        }
+                      } catch (_) {
+                        if (mounted)
+                          _showMessage('No se pudieron cargar las fotos.');
+                      }
+                    },
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: Text(
+                      photos.isEmpty
+                          ? 'Agregar fotos'
+                          : 'Agregar más fotos (${photos.length})',
+                    ),
+                  ),
+                  if (photos.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 94,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: photos.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) => Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.memory(
+                                photos[index],
+                                width: 94,
+                                height: 94,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: IconButton(
+                                onPressed: () =>
+                                    setModalState(() => photos.removeAt(index)),
+                                icon: const Icon(Icons.close),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.black54,
+                                  foregroundColor: Colors.white,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () {
+                      if (noteController.text.trim().isEmpty &&
+                          photos.isEmpty) {
+                        _showMessage('Escribe una nota o agrega una foto.');
+                        return;
+                      }
+                      Navigator.of(sheetContext).pop(true);
+                    },
+                    icon: const Icon(Icons.save_outlined),
+                    label: const Text('Guardar en mi diario'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      if (shouldSave != true) return;
+
+      await DBService.addEcoJournalEntry(
+        username: widget.username,
+        challengeId: widget.challengeId,
+        note: noteController.text,
+        photos: photos,
+      );
+      if (!mounted) return;
+      await _loadEntries();
+      _showMessage('Tu entrada quedó guardada.');
+    } catch (_) {
+      if (mounted)
+        _showMessage('No se pudo guardar la entrada. Inténtalo de nuevo.');
+    }
+  }
+
+  Future<void> _deleteEntry(int entryId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar entrada'),
+        content: const Text('¿Quieres eliminar esta nota y sus fotos?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await DBService.deleteEcoJournalEntry(
+        entryId: entryId,
+        username: widget.username,
+      );
+      await _loadEntries();
+    } catch (_) {
+      if (mounted) _showMessage('No se pudo eliminar la entrada.');
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _formatDate(String value) {
+    final date = DateTime.tryParse(value)?.toLocal();
+    if (date == null) return value;
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$day/$month/$year · $hour:$minute';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Diario del reto'),
+        backgroundColor: theme.colorScheme.primary,
+        foregroundColor: theme.colorScheme.onPrimary,
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _addEntry,
+        icon: const Icon(Icons.add),
+        label: const Text('Nueva entrada'),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _loadError
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('No se pudo cargar tu diario.'),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    onPressed: _loadEntries,
+                    child: const Text('Reintentar'),
+                  ),
+                ],
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+              children: [
+                Text(
+                  widget.challengeTitle,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Registra tus acciones, reflexiones y fotos día a día.',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                if (_entries.isEmpty)
+                  Card(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    child: const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Column(
+                        children: [
+                          Icon(Icons.auto_stories_outlined, size: 40),
+                          SizedBox(height: 12),
+                          Text(
+                            'Tu diario está listo',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          SizedBox(height: 6),
+                          Text(
+                            'Agrega una nota o una foto para contar cómo avanzas con este reto.',
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  ..._entries.map((entry) {
+                    final note = entry['note'] as String;
+                    final photos = entry['photos'] as List<Uint8List>;
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.calendar_today_outlined,
+                                  size: 18,
+                                  color: theme.colorScheme.primaryContainer,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _formatDate(entry['created_at'] as String),
+                                    style: theme.textTheme.labelLarge,
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Eliminar entrada',
+                                  onPressed: () =>
+                                      _deleteEntry(entry['id'] as int),
+                                  icon: const Icon(Icons.delete_outline),
+                                ),
+                              ],
+                            ),
+                            if (note.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(note),
+                            ],
+                            if (photos.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                height: 150,
+                                child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: photos.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(width: 10),
+                                  itemBuilder: (context, index) => ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.memory(
+                                      photos[index],
+                                      width: 150,
+                                      height: 150,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
               ],
             ),
     );
@@ -2997,6 +3553,7 @@ class KoruclasesPage extends StatefulWidget {
 
 class _KoruclasesPageState extends State<KoruclasesPage> {
   List<Map<String, dynamic>> _teacherLessons = [];
+  List<Map<String, dynamic>> _teacherCourses = [];
   bool _isLoadingTeacherLessons = true;
 
   @override
@@ -3008,9 +3565,14 @@ class _KoruclasesPageState extends State<KoruclasesPage> {
 
   Future<void> _loadTeacherLessons() async {
     try {
-      final lessons = await DBService.getTeacherLessons();
+      final lessons = await loadManageableLessons(
+        widget.username,
+        DBService.lessonDestinationKoruclases,
+      );
+      final courseRows = await loadManageableCourses(widget.username);
       if (!mounted) return;
       setState(() {
+        _teacherCourses = courseRows;
         _teacherLessons = lessons;
         _isLoadingTeacherLessons = false;
       });
@@ -3059,6 +3621,25 @@ class _KoruclasesPageState extends State<KoruclasesPage> {
                   courseIndex: entry.$1,
                 ),
               ),
+              if (_teacherCourses.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Text(
+                  'Cursos de profesores',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ..._teacherCourses.map(
+                  (row) => TeacherCourseCard(
+                    key: ValueKey(row['id']),
+                    row: row,
+                    username: widget.username,
+                    onChanged: _loadTeacherLessons,
+                  ),
+                ),
+              ],
               if (_teacherLessons.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 Text(
@@ -3072,6 +3653,8 @@ class _KoruclasesPageState extends State<KoruclasesPage> {
                 ..._teacherLessons.map(
                   (lesson) => _TeacherLessonCard(
                     lesson: lesson,
+                    username: widget.username,
+                    onChanged: _loadTeacherLessons,
                   ),
                 ),
               ],
@@ -3085,8 +3668,14 @@ class _KoruclasesPageState extends State<KoruclasesPage> {
 
 class _TeacherLessonCard extends StatelessWidget {
   final Map<String, dynamic> lesson;
+  final String username;
+  final Future<void> Function() onChanged;
 
-  const _TeacherLessonCard({required this.lesson});
+  const _TeacherLessonCard({
+    required this.lesson,
+    required this.username,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3102,14 +3691,25 @@ class _TeacherLessonCard extends StatelessWidget {
           '${lesson['summary']}\n${lesson['teacher_name'] ?? 'Profesor'}',
         ),
         isThreeLine: true,
-        trailing: AnimatedBuilder(
-          animation: progressStats,
-          builder: (context, _) => Icon(
-            progressStats.isTeacherLessonCompleted(lessonId)
-                ? Icons.check_circle_outline
-                : Icons.chevron_right,
-            color: theme.colorScheme.primaryContainer,
-          ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedBuilder(
+              animation: progressStats,
+              builder: (context, _) => Icon(
+                progressStats.isTeacherLessonCompleted(lessonId)
+                    ? Icons.check_circle_outline
+                    : Icons.chevron_right,
+                color: theme.colorScheme.primaryContainer,
+              ),
+            ),
+            if (lesson['can_manage'] == true)
+              TeacherLessonMenu(
+                lesson: lesson,
+                username: username,
+                onChanged: onChanged,
+              ),
+          ],
         ),
         onTap: () => Navigator.push(
           context,
@@ -3120,6 +3720,94 @@ class _TeacherLessonCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// Carga lecciones marcando cuáles puede editar o eliminar el usuario.
+Future<List<Map<String, dynamic>>> loadManageableLessons(
+  String username,
+  String destination,
+) async {
+  final lessons = await DBService.getTeacherLessons(destination: destination);
+  return [
+    for (final lesson in lessons)
+      {
+        ...lesson,
+        'can_manage': await DBService.canManageLesson(username, lesson),
+      },
+  ];
+}
+
+class TeacherLessonMenu extends StatelessWidget {
+  final Map<String, dynamic> lesson;
+  final String username;
+  final Future<void> Function() onChanged;
+
+  const TeacherLessonMenu({
+    super.key,
+    required this.lesson,
+    required this.username,
+    required this.onChanged,
+  });
+
+  Future<void> _edit(BuildContext context) async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateTeacherLessonPage(
+          teacherUsername: username,
+          lesson: lesson,
+        ),
+      ),
+    );
+    if (saved == true) await onChanged();
+  }
+
+  Future<void> _delete(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Eliminar lección'),
+        content: Text('¿Eliminar "${lesson['title']}"? No se puede deshacer.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final deleted = await DBService.deleteTeacherLesson(
+      requesterUsername: username,
+      lessonId: lesson['id'] as int,
+    );
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          deleted ? 'Lección eliminada.' : 'No se pudo eliminar la lección.',
+        ),
+      ),
+    );
+    if (deleted) await onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: 'Opciones',
+      onSelected: (value) =>
+          value == 'edit' ? _edit(context) : _delete(context),
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'edit', child: Text('Editar')),
+        PopupMenuItem(value: 'delete', child: Text('Eliminar')),
+      ],
     );
   }
 }
@@ -3213,19 +3901,19 @@ class CourseCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             onTap: isUnlocked
                 ? () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CoursePage(
-                          course: course,
-                          courseIndex: courseIndex,
-                        ),
-                      ),
-                    )
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          CoursePage(course: course, courseIndex: courseIndex),
+                    ),
+                  )
                 : () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Completa el curso anterior para continuar.'),
+                    const SnackBar(
+                      content: Text(
+                        'Completa el curso anterior para continuar.',
                       ),
                     ),
+                  ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -3402,15 +4090,15 @@ class _DiscussionPageState extends State<DiscussionPage> {
       if (!mounted) return;
       setState(() {
         widget.space.replies.add(
-        DiscussionReply(
-          id: replyId,
-          author: widget.displayName,
-          authorHandle: widget.username,
-          authorRole: widget.userRole,
-          authorPhoto: widget.authorPhoto,
-          message: message,
-        ),
-      );
+          DiscussionReply(
+            id: replyId,
+            author: widget.displayName,
+            authorHandle: widget.username,
+            authorRole: widget.userRole,
+            authorPhoto: widget.authorPhoto,
+            message: message,
+          ),
+        );
         _replyController.clear();
       });
     } catch (_) {
@@ -3463,8 +4151,6 @@ class _DiscussionPageState extends State<DiscussionPage> {
         ],
       ),
     );
-    titleController.dispose();
-    descriptionController.dispose();
     if (!mounted || values == null || widget.space.id == null) return;
 
     final updated = await DBService.updateDiscussionSpace(
@@ -3548,7 +4234,6 @@ class _DiscussionPageState extends State<DiscussionPage> {
         ],
       ),
     );
-    controller.dispose();
     if (!mounted || message == null) return;
     final updated = await DBService.updateDiscussionReply(
       replyId: reply.id!,
@@ -3732,7 +4417,8 @@ class _DiscussionPageState extends State<DiscussionPage> {
                     final canManageReply = _canManageReply(reply);
                     return Card(
                       margin: const EdgeInsets.only(bottom: 10),
-                      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withOpacity(0.65),
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundImage: reply.authorPhoto == null
@@ -3919,8 +4605,10 @@ class CoursePage extends StatelessWidget {
             final color = _activityColor(activity.type);
             final isUnlocked = progressStats.isActivityUnlocked(activity);
             return ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16)),
               tileColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
@@ -3985,8 +4673,8 @@ class ResultScreen extends StatelessWidget {
     final emoji = pct == 1.0
         ? '🏆'
         : pct >= 0.7
-            ? '⭐'
-            : '💪';
+        ? '⭐'
+        : '💪';
     final msg = pct == 1.0
         ? '¡Perfecto!'
         : pct >= 0.7
@@ -4172,7 +4860,9 @@ class _QuizPageState extends State<QuizPage> {
               ? TextButton.icon(
                   onPressed: _useSecondChance,
                   icon: const Icon(Icons.replay),
-                  label: Text('Segundo intento (${progressStats.secondChances})'),
+                  label: Text(
+                    'Segundo intento (${progressStats.secondChances})',
+                  ),
                 )
               : TextButton.icon(
                   onPressed: selectedOption != null ||
@@ -4212,7 +4902,9 @@ class _QuizPageState extends State<QuizPage> {
                   ? theme.colorScheme.onSurfaceVariant
                   : textColor ?? theme.colorScheme.onSurface,
                 padding: const EdgeInsets.symmetric(
-                    vertical: 16, horizontal: 14),
+                  vertical: 16,
+                  horizontal: 14,
+                ),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                     side: BorderSide(
@@ -4341,7 +5033,9 @@ class _MatchingPageState extends State<MatchingPage> {
                 children: [
                   Text(
                     'Toca un término y luego su definición correcta.',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
@@ -4377,18 +5071,22 @@ class _MatchingPageState extends State<MatchingPage> {
                                                 : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
-                                            color: isMatched
-                                                ? Colors.green.shade400
-                                                : isSelected
-                                                    ? Colors.purple.shade400
-                                                    : Colors.transparent,
-                                            width: 2),
+                                          color: isMatched
+                                              ? Colors.green.shade400
+                                              : isSelected
+                                              ? Colors.purple.shade400
+                                              : Colors.transparent,
+                                          width: 2,
+                                        ),
                                       ),
-                                      child: Text(term,
-                                          style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.bold),
-                                          textAlign: TextAlign.center),
+                                      child: Text(
+                                        term,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
                                     ),
                                   ),
                                 );
@@ -4414,7 +5112,9 @@ class _MatchingPageState extends State<MatchingPage> {
                                   child: GestureDetector(
                                     onTap: () => _onDefinitionTap(def),
                                     child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 200),
+                                      duration: const Duration(
+                                        milliseconds: 200,
+                                      ),
                                       width: double.infinity,
                                       padding: const EdgeInsets.symmetric(
                                           vertical: 14, horizontal: 10),
@@ -4426,16 +5126,19 @@ class _MatchingPageState extends State<MatchingPage> {
                                                 : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
-                                            color: isMatched
-                                                ? Colors.green.shade400
-                                                : isWrong
-                                                    ? Colors.red.shade400
-                                                    : Colors.transparent,
-                                            width: 2),
+                                          color: isMatched
+                                              ? Colors.green.shade400
+                                              : isWrong
+                                              ? Colors.red.shade400
+                                              : Colors.transparent,
+                                          width: 2,
+                                        ),
                                       ),
-                                      child: Text(def,
-                                          style: const TextStyle(fontSize: 12),
-                                          textAlign: TextAlign.center),
+                                      child: Text(
+                                        def,
+                                        style: const TextStyle(fontSize: 12),
+                                        textAlign: TextAlign.center,
+                                      ),
                                     ),
                                   ),
                                 );
@@ -4595,7 +5298,9 @@ class _MemoryPageState extends State<MemoryPage> {
                                   : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: showFace ? theme.colorScheme.primaryContainer : theme.colorScheme.outlineVariant,
+                                color: showFace
+                                    ? theme.colorScheme.primaryContainer
+                                    : theme.colorScheme.outlineVariant,
                                 width: 2,
                               ),
                               boxShadow: showFace
@@ -4609,7 +5314,8 @@ class _MemoryPageState extends State<MemoryPage> {
                             child: Center(
                               child: showFace
                                   ? Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
                                         Text(item.card.emoji, style: const TextStyle(fontSize: 32)),
                                         const SizedBox(height: 6),
@@ -4789,7 +5495,10 @@ class _FillBlankPageState extends State<FillBlankPage> {
                 TextSpan(text: part1),
                 WidgetSpan(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     margin: const EdgeInsets.symmetric(horizontal: 8),
                     decoration: BoxDecoration(
                       color: selectedOptionIndex == null
@@ -4874,7 +5583,9 @@ class _FillBlankPageState extends State<FillBlankPage> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                   side: BorderSide(
-                    color: isSelected ? theme.colorScheme.primaryContainer : Colors.transparent,
+                    color: isSelected
+                        ? theme.colorScheme.primaryContainer
+                        : Colors.transparent,
                     width: 2,
                   ),
                 ),
@@ -5059,9 +5770,15 @@ class _SortingPageState extends State<SortingPage> {
                               ),
                               title: Text(
                                 step,
-                                style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.onSurface,
+                                ),
                               ),
-                              trailing: Icon(Icons.drag_handle, color: theme.colorScheme.outline),
+                              trailing: Icon(
+                                Icons.drag_handle,
+                                color: theme.colorScheme.outline,
+                              ),
                             ),
                           );
                         },
@@ -5081,7 +5798,10 @@ class _SortingPageState extends State<SortingPage> {
                     ),
                     child: const Text(
                       'Verificar Orden',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],

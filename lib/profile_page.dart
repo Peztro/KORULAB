@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:crop_your_image/crop_your_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -114,7 +115,15 @@ class _ProfilePageState extends State<ProfilePage> {
       );
       if (image == null) return;
       final bytes = await image.readAsBytes();
-      if (mounted) setState(() => _profilePhoto = bytes);
+      if (!mounted) return;
+      final cropped = await Navigator.push<Uint8List>(
+        context,
+        MaterialPageRoute(builder: (_) => _PhotoCropPage(image: bytes)),
+      );
+      if (cropped != null && mounted) {
+        setState(() => _profilePhoto = cropped);
+        await _saveProfile();
+      }
     } catch (_) {
       _showMessage('No se pudo abrir la galería. Inténtalo de nuevo.');
     }
@@ -449,6 +458,94 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 ),
+    );
+  }
+}
+
+class _PhotoCropPage extends StatefulWidget {
+  final Uint8List image;
+  const _PhotoCropPage({required this.image});
+
+  @override
+  State<_PhotoCropPage> createState() => _PhotoCropPageState();
+}
+
+class _PhotoCropPageState extends State<_PhotoCropPage> {
+  final _controller = CropController();
+  bool _cropping = false;
+
+  void _onCropped(CropResult result) {
+    if (!mounted) return;
+    switch (result) {
+      case CropSuccess(:final croppedImage):
+        Navigator.pop(context, croppedImage);
+      case CropFailure():
+        setState(() => _cropping = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo recortar la foto.')),
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text('Elige la parte de la foto'),
+        backgroundColor: theme.colorScheme.primary,
+        foregroundColor: theme.colorScheme.onPrimary,
+        actions: const [],
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: Crop(
+                image: widget.image,
+                controller: _controller,
+                onCropped: _onCropped,
+                aspectRatio: 1,
+                withCircleUi: true,
+                baseColor: Colors.black,
+                maskColor: Colors.black54,
+                interactive: true,
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(12, 12, 12, 4),
+              child: Text(
+                'Mueve y ajusta el círculo para elegir cómo se verá tu foto.',
+                style: TextStyle(color: Colors.white70),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _cropping
+                      ? null
+                      : () {
+                          setState(() => _cropping = true);
+                          _controller.crop();
+                        },
+                  icon: _cropping
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.check),
+                  label: const Text('Guardar foto'),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

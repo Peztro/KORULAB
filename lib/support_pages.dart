@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'db_service.dart';
+import 'main.dart' show describeActivityId;
+import 'teacher_courses.dart' show decodeActivities;
 
 class SettingsPage extends StatefulWidget {
   final String username;
@@ -37,36 +39,12 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  void _openReview() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => SupportReviewPage(adminUsername: widget.username),
-      ),
-    );
-  }
-
   void _openRoleManagement() {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => RoleManagementPage(adminUsername: widget.username),
       ),
-    );
-  }
-
-  Future<void> _openCreateLesson() async {
-    final created = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CreateTeacherLessonPage(
-          teacherUsername: widget.username,
-        ),
-      ),
-    );
-    if (!mounted || created != true) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('La lección ya está disponible en Koruclases.')),
     );
   }
 
@@ -101,21 +79,24 @@ class _SettingsPageState extends State<SettingsPage> {
           return ListView(
             children: [
               ListTile(
-                leading: const Icon(Icons.support_agent),
-                title: const Text('Soporte y PQRS'),
-                subtitle: const Text(
-                  'Envía una petición, queja, reclamo o sugerencia a @koruadm.',
-                ),
+                leading: const Icon(Icons.lock_reset),
+                title: const Text('Cambiar contraseña'),
+                subtitle: const Text('Restablece tu contraseña de ingreso.'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: _openSupportForm,
+                onTap: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => _ChangePasswordDialog(username: widget.username),
+                ),
               ),
-              if (isAdmin)
+              if (!isAdmin)
                 ListTile(
-                  leading: const Icon(Icons.inbox_outlined),
-                  title: const Text('Revisión de PQRS'),
-                  subtitle: const Text('Consulta y actualiza las solicitudes recibidas.'),
+                  leading: const Icon(Icons.support_agent),
+                  title: const Text('Soporte y PQRS'),
+                  subtitle: const Text(
+                    'Envía una petición, queja, reclamo o sugerencia a @koruadm.',
+                  ),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: _openReview,
+                  onTap: _openSupportForm,
                 ),
               if (isAdmin)
                 ListTile(
@@ -124,16 +105,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: const Text('Asignar administradores, profesores y estudiantes.'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: _openRoleManagement,
-                ),
-              if (canTeach)
-                ListTile(
-                  leading: const Icon(Icons.library_add_outlined),
-                  title: const Text('Crear lección'),
-                  subtitle: const Text('Publicar una lección para los estudiantes.'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _openCreateLesson,
-                ),
-              if (canTeach)
+                ),              if (canTeach)
                 ListTile(
                   leading: const Icon(Icons.groups_outlined),
                   title: const Text('Perfiles de estudiantes'),
@@ -145,6 +117,120 @@ class _SettingsPageState extends State<SettingsPage> {
           );
         },
       ),
+    );
+  }
+}
+
+class _ChangePasswordDialog extends StatefulWidget {
+  final String username;
+  const _ChangePasswordDialog({required this.username});
+
+  @override
+  State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
+}
+
+class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
+  final _current = TextEditingController();
+  final _new = TextEditingController();
+  final _confirm = TextEditingController();
+  String? _error;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _current.dispose();
+    _new.dispose();
+    _confirm.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_new.text.length < 6) {
+      setState(() => _error = 'La nueva contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+    if (_new.text != _confirm.text) {
+      setState(() => _error = 'Las contraseñas nuevas no coinciden.');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    bool ok;
+    try {
+      ok = await DBService.changeOwnPassword(
+        username: widget.username,
+        currentPassword: _current.text,
+        newPassword: _new.text,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = 'No se pudo cambiar la contraseña: $e';
+      });
+      return;
+    }
+    if (!mounted) return;
+    if (!ok) {
+      setState(() {
+        _saving = false;
+        _error = 'La contraseña actual es incorrecta.';
+      });
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.pop(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Contraseña actualizada.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Cambiar contraseña'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _current,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Contraseña actual'),
+            ),
+            TextField(
+              controller: _new,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Nueva contraseña'),
+            ),
+            TextField(
+              controller: _confirm,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Confirmar nueva contraseña'),
+            ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          child: const Text('Guardar'),
+        ),
+      ],
     );
   }
 }
@@ -351,7 +437,7 @@ class _SupportReviewPageState extends State<SupportReviewPage> {
       final requests = await DBService.getSupportRequests(widget.adminUsername);
       if (!mounted) return;
       setState(() {
-        _requests = requests;
+        _requests = List.of(requests);
         _isLoading = false;
       });
     } catch (_) {
@@ -372,8 +458,10 @@ class _SupportReviewPageState extends State<SupportReviewPage> {
       );
       if (!mounted) return;
       setState(() {
-        final request = _requests.firstWhere((item) => item['id'] == id);
-        request['status'] = status;
+        final index = _requests.indexWhere((item) => item['id'] == id);
+        if (index >= 0) {
+          _requests[index] = {..._requests[index], 'status': status};
+        }
       });
     } catch (_) {
       if (!mounted) return;
@@ -499,7 +587,7 @@ class _RoleManagementPageState extends State<RoleManagementPage> {
       );
       if (!mounted) return;
       setState(() {
-        _users = users;
+        _users = List.of(users);
         _isLoading = false;
         _error = null;
       });
@@ -528,11 +616,16 @@ class _RoleManagementPageState extends State<RoleManagementPage> {
         return;
       }
       setState(() {
-        final user = _users.firstWhere(
+        final index = _users.indexWhere(
           (item) => item['username'] == username,
         );
-        user['role'] = role;
-        user['is_admin'] = role == DBService.roleAdmin ? 1 : 0;
+        if (index >= 0) {
+          _users[index] = {
+            ..._users[index],
+            'role': role,
+            'is_admin': role == DBService.roleAdmin ? 1 : 0,
+          };
+        }
       });
     } catch (_) {
       if (!mounted) return;
@@ -648,10 +741,12 @@ class _RoleManagementPageState extends State<RoleManagementPage> {
 
 class CreateTeacherLessonPage extends StatefulWidget {
   final String teacherUsername;
+  final Map<String, dynamic>? lesson;
 
   const CreateTeacherLessonPage({
     super.key,
     required this.teacherUsername,
+    this.lesson,
   });
 
   @override
@@ -661,21 +756,42 @@ class CreateTeacherLessonPage extends StatefulWidget {
 
 class _CreateTeacherLessonPageState extends State<CreateTeacherLessonPage> {
   final _formKey = GlobalKey<FormState>();
-  final _titleController = TextEditingController();
-  final _summaryController = TextEditingController();
-  final _contentController = TextEditingController();
+  late final _titleController =
+      TextEditingController(text: widget.lesson?['title'] as String?);
+  late final _summaryController =
+      TextEditingController(text: widget.lesson?['summary'] as String?);
+  late final _contentController =
+      TextEditingController(text: widget.lesson?['content'] as String?);
+  late String _destination =
+      widget.lesson?['destination'] as String? ??
+          DBService.lessonDestinationKoruclases;
   bool _isSaving = false;
+
+  bool get _isEditing => widget.lesson != null;
 
   Future<void> _saveLesson() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
     try {
-      await DBService.createTeacherLesson(
-        teacherUsername: widget.teacherUsername,
-        title: _titleController.text.trim(),
-        summary: _summaryController.text.trim(),
-        content: _contentController.text.trim(),
-      );
+      if (_isEditing) {
+        final updated = await DBService.updateTeacherLesson(
+          requesterUsername: widget.teacherUsername,
+          lessonId: widget.lesson!['id'] as int,
+          title: _titleController.text,
+          summary: _summaryController.text,
+          content: _contentController.text,
+          destination: _destination,
+        );
+        if (!updated) throw StateError('Sin permiso');
+      } else {
+        await DBService.createTeacherLesson(
+          teacherUsername: widget.teacherUsername,
+          title: _titleController.text.trim(),
+          summary: _summaryController.text.trim(),
+          content: _contentController.text.trim(),
+          destination: _destination,
+        );
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (_) {
       if (mounted) {
@@ -702,7 +818,7 @@ class _CreateTeacherLessonPageState extends State<CreateTeacherLessonPage> {
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Crear lección'),
+        title: Text(_isEditing ? 'Editar lección' : 'Crear lección'),
         backgroundColor: theme.colorScheme.primary,
         foregroundColor: theme.colorScheme.onPrimary,
       ),
@@ -711,6 +827,27 @@ class _CreateTeacherLessonPageState extends State<CreateTeacherLessonPage> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            Text('¿Dónde se publicará?', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 8),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
+                  value: DBService.lessonDestinationKoruclases,
+                  label: Text('Koruclases'),
+                  icon: Icon(Icons.school_outlined),
+                ),
+                ButtonSegment(
+                  value: DBService.lessonDestinationKorucol,
+                  label: Text('Nota en Korucol'),
+                  icon: Icon(Icons.sticky_note_2_outlined),
+                ),
+              ],
+              selected: {_destination},
+              onSelectionChanged: _isSaving
+                  ? null
+                  : (value) => setState(() => _destination = value.first),
+            ),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _titleController,
               enabled: !_isSaving,
@@ -763,7 +900,11 @@ class _CreateTeacherLessonPageState extends State<CreateTeacherLessonPage> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.publish_outlined),
-              label: Text(_isSaving ? 'Publicando...' : 'Publicar lección'),
+              label: Text(_isSaving
+                  ? 'Guardando...'
+                  : _isEditing
+                      ? 'Guardar cambios'
+                      : 'Publicar lección'),
             ),
           ],
         ),
@@ -869,6 +1010,7 @@ class _StudentProfilesPageState extends State<StudentProfilesPage> {
                               MaterialPageRoute(
                                 builder: (_) => StudentProfileDetailsPage(
                                   student: student,
+                                  requesterUsername: widget.requesterUsername,
                                 ),
                               ),
                             ),
@@ -880,16 +1022,112 @@ class _StudentProfilesPageState extends State<StudentProfilesPage> {
   }
 }
 
-class StudentProfileDetailsPage extends StatelessWidget {
+class StudentProfileDetailsPage extends StatefulWidget {
   final Map<String, dynamic> student;
+  final String requesterUsername;
 
   const StudentProfileDetailsPage({
     super.key,
     required this.student,
+    required this.requesterUsername,
   });
 
   @override
+  State<StudentProfileDetailsPage> createState() =>
+      _StudentProfileDetailsPageState();
+}
+
+class _StudentProfileDetailsPageState extends State<StudentProfileDetailsPage> {
+  late final Future<Map<String, List<Map<String, dynamic>>>> _activity =
+      DBService.getStudentCommunityActivity(
+    widget.requesterUsername,
+    widget.student['username'] as String,
+  );
+  late final Future<List<String>> _lessons = _loadLessonTitles();
+
+  Future<List<String>> _loadLessonTitles() async {
+    final ids = (widget.student['completed_ids'] as List?)?.cast<String>() ?? [];
+    final teacherLessons = await DBService.getTeacherLessons();
+    final teacherTitles = {
+      for (final l in teacherLessons) 'teacher:${l['id']}': l['title'] as String,
+    };
+    for (final course in await DBService.getTeacherCourses()) {
+      final activities = decodeActivities(course['activities'] as String?);
+      for (var i = 0; i < activities.length; i++) {
+        teacherTitles['custom:${course['id']}:$i'] =
+            '${course['title']} · ${activities[i]['title']}';
+      }
+    }
+    return [
+      for (final id in ids) teacherTitles[id] ?? describeActivityId(id),
+    ];
+  }
+
+  Future<void> _resetPassword() async {
+    final username = widget.student['username'] as String;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restablecer contraseña'),
+        content: Text(
+          'Se generará una contraseña temporal para @$username y la '
+          'contraseña actual dejará de funcionar.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Restablecer'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      final temp = await DBService.resetStudentPassword(
+        widget.requesterUsername,
+        username,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Contraseña temporal'),
+          content: SelectableText(
+            'Entrega esta contraseña a @$username:\n\n$temp',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo restablecer: $e')),
+      );
+    }
+  }
+
+  Widget _section(ThemeData theme, String title) => Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 8),
+        child: Text(
+          title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
+
+  @override
   Widget build(BuildContext context) {
+    final student = widget.student;
     final theme = Theme.of(context);
     final photo = student['profile_photo'] as Uint8List?;
     final displayName = (student['display_name'] as String?)?.trim();
@@ -964,6 +1202,80 @@ class StudentProfileDetailsPage extends StatelessWidget {
             ),
           if ((student['bio'] as String? ?? '').isNotEmpty)
             _StudentDetail(label: 'Sobre el estudiante', value: student['bio'] as String),
+          const Divider(height: 32),
+          OutlinedButton.icon(
+            onPressed: _resetPassword,
+            icon: const Icon(Icons.lock_reset),
+            label: const Text('Restablecer contraseña'),
+          ),
+          const Divider(height: 32),
+          _section(theme, 'Lecciones completadas'),
+          FutureBuilder<List<String>>(
+            future: _lessons,
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.data!.isEmpty) {
+                return const Text('Aún no ha completado lecciones.');
+              }
+              return Column(
+                children: [
+                  for (final title in snapshot.data!)
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.check_circle_outline),
+                      title: Text(title),
+                    ),
+                ],
+              );
+            },
+          ),
+          FutureBuilder<Map<String, List<Map<String, dynamic>>>>(
+            future: _activity,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return const Text('No se pudo cargar su actividad.');
+              }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final posts = snapshot.data!['posts']!;
+              final replies = snapshot.data!['replies']!;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _section(theme, 'Publicaciones'),
+                  if (posts.isEmpty) const Text('Sin publicaciones.'),
+                  for (final post in posts)
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.forum_outlined),
+                      title: Text(post['title'] as String),
+                      subtitle: Text(
+                        post['description'] as String,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  _section(theme, 'Comentarios'),
+                  if (replies.isEmpty) const Text('Sin comentarios.'),
+                  for (final reply in replies)
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.chat_bubble_outline),
+                      title: Text(reply['message'] as String),
+                      subtitle: Text(
+                        'En: ${reply['discussion_title'] ?? 'publicación eliminada'}',
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );

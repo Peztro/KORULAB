@@ -36,13 +36,13 @@ dependencies:
   cupertino_icons: ^1.0.8
   
   # Base de datos SQLite
-  sqflite: ^2.3.0
   path_provider: ^2.1.0
-  crypto: ^3.0.3
   
   # Guardar sesión
   shared_preferences: ^2.2.0
   image_picker: ^1.2.4
+  supabase_flutter: ^2.18.2
+  crop_your_image: ^2.0.1
 
 dev_dependencies:
   flutter_test:
