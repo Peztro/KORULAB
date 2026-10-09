@@ -1,17 +1,21 @@
 ﻿import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'db_service.dart';
+import 'feedback_service.dart';
+import 'notification_service.dart';
 import 'register_page.dart';
 import 'splash_page.dart';
 import 'profile_page.dart';
 import 'support_pages.dart';
+import 'teacher_courses.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await DBService.ensureAdminAccount();
-  await DBService.ensureKoruColAccount();
+  await DBService.init();
   runApp(const KoruApp());
 }
 
@@ -37,7 +41,7 @@ class KoruApp extends StatelessWidget {
           primaryContainer: Color(0xFFA5D6A7),
           // Color del texto/iconos sobre primaryContainer
           onPrimaryContainer: Color(0xFF1B5E20),
-          
+
           // Color secundario - usado en acciones alternativas y énfasis
           secondary: Color(0xFF1976D2),
           // Color del texto/iconos sobre secondary
@@ -46,7 +50,7 @@ class KoruApp extends StatelessWidget {
           secondaryContainer: Color(0xFFBBDEFB),
           // Color del texto/iconos sobre secondaryContainer
           onSecondaryContainer: Color(0xFF0D47A1),
-          
+
           // Color terciario - usado para efectos complementarios y énfasis adicional
           tertiary: Color(0xFF8D6E63),
           // Color del texto/iconos sobre tertiary
@@ -55,7 +59,7 @@ class KoruApp extends StatelessWidget {
           tertiaryContainer: Color(0xFFD7CCC8),
           // Color del texto/iconos sobre tertiaryContainer
           onTertiaryContainer: Color(0xFF5D4037),
-          
+
           // Color para errores y alertas
           error: Color(0xFFD32F2F),
           // Color del texto/iconos sobre error
@@ -64,7 +68,7 @@ class KoruApp extends StatelessWidget {
           errorContainer: Color(0xFFFFCDD2),
           // Color del texto/iconos sobre errorContainer
           onErrorContainer: Color(0xFFB71C1C),
-          
+
           // Color de fondo principal - usado en Scaffold y superficies
           surface: Color(0xFF122014),
           // Color del texto/iconos sobre surface
@@ -73,17 +77,17 @@ class KoruApp extends StatelessWidget {
           surfaceContainerHighest: Color(0xFF1B3C22),
           // Color secundario del texto sobre surface
           onSurfaceVariant: Color(0xFFC2E8C4),
-          
+
           // Color de contorno/borde para separadores y divisores
           outline: Color(0xFF758E77),
           // Variante del contorno - para bordes más suaves
           outlineVariant: Color(0xFF3F5E44),
-          
+
           // Color de sombra - para sombras y profundidad
           shadow: Color(0xFF000000),
           // Color de oscurecimiento - para overlays y modales
           scrim: Color(0xFF000000),
-          
+
           // Fondo inverso - para modo claro en apps oscuras
           inverseSurface: Color(0xFFE8F5E8),
           // Texto inverso - para modo claro en apps oscuras
@@ -120,7 +124,10 @@ class KoruApp extends StatelessWidget {
 // Página de inicio de sesión - permite a los usuarios autenticarse con usuario y contraseña
 // ─────────────────────────────────────────────
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, this.addAccount = false});
+
+  // Cuando es true se abre desde "Agregar otra cuenta" y permite volver atrás.
+  final bool addAccount;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -154,13 +161,16 @@ class _LoginPageState extends State<LoginPage> {
       if (isValid) {
         // Guardar sesión
         await DBService.saveSession(username);
-        
+
         if (mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (_) => HomePage(username: username),
-            ),
+          final route = MaterialPageRoute(
+            builder: (_) => HomePage(username: username),
           );
+          if (widget.addAccount) {
+            Navigator.of(context).pushAndRemoveUntil(route, (_) => false);
+          } else {
+            Navigator.of(context).pushReplacement(route);
+          }
         }
       } else {
         _showSnackBar('Usuario o contraseña incorrectos');
@@ -175,15 +185,15 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _goToRegister() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RegisterPage()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const RegisterPage()));
   }
 
   @override
@@ -198,25 +208,38 @@ class _LoginPageState extends State<LoginPage> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
+      appBar: widget.addAccount
+          ? AppBar(
+              backgroundColor: theme.colorScheme.surface,
+              title: const Text('Agregar otra cuenta'),
+            )
+          : null,
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Image.asset('assets/images/koruicon.png',
-                  height: 100, fit: BoxFit.contain),
+              Image.asset(
+                'assets/images/koruicon.png',
+                height: 100,
+                fit: BoxFit.contain,
+              ),
               const SizedBox(height: 24),
               Text(
                 'Bienvenido a Korulab',
                 style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.onSurface,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
                 'Inicia sesión para continuar',
-                style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 40),
@@ -229,9 +252,11 @@ class _LoginPageState extends State<LoginPage> {
                   prefixText: '@',
                   prefixIcon: const Icon(Icons.person),
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   filled: true,
-                  fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                  fillColor: theme.colorScheme.surfaceContainerHighest
+                      .withOpacity(0.5),
                 ),
               ),
               const SizedBox(height: 16),
@@ -243,16 +268,20 @@ class _LoginPageState extends State<LoginPage> {
                   hintText: 'Contraseña',
                   prefixIcon: const Icon(Icons.lock),
                   suffixIcon: IconButton(
-                    icon: Icon(_obscurePassword
-                        ? Icons.visibility_off
-                        : Icons.visibility),
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility,
+                    ),
                     onPressed: () =>
                         setState(() => _obscurePassword = !_obscurePassword),
                   ),
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   filled: true,
-                  fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                  fillColor: theme.colorScheme.surfaceContainerHighest
+                      .withOpacity(0.5),
                 ),
               ),
               const SizedBox(height: 32),
@@ -262,7 +291,8 @@ class _LoginPageState extends State<LoginPage> {
                   foregroundColor: theme.colorScheme.onPrimary,
                   minimumSize: const Size(double.infinity, 50),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 onPressed: _isLoading ? null : _login,
                 child: _isLoading
@@ -271,27 +301,38 @@ class _LoginPageState extends State<LoginPage> {
                         width: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
-                    : const Text('Iniciar sesión',
+                    : const Text(
+                        'Iniciar sesión',
                         style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('¿No tienes cuenta? ',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant)),
+                  Text(
+                    '¿No tienes cuenta? ',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                   GestureDetector(
                     onTap: _isLoading ? null : _goToRegister,
-                    child: Text('Regístrate',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.bold)),
+                    child: Text(
+                      'Regístrate',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -303,9 +344,210 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
+class _AccountSwitcherSheet extends StatefulWidget {
+  const _AccountSwitcherSheet({required this.onSwitch, required this.onAdd});
+
+  final void Function(Map<String, dynamic> account) onSwitch;
+  final VoidCallback onAdd;
+
+  @override
+  State<_AccountSwitcherSheet> createState() => _AccountSwitcherSheetState();
+}
+
+class _AccountSwitcherSheetState extends State<_AccountSwitcherSheet> {
+  List<Map<String, dynamic>> _accounts = [];
+  final Set<String> _forgettingAccounts = {};
+  bool _isLoading = true;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _reloadAccounts();
+  }
+
+  Future<void> _reloadAccounts() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    try {
+      final accounts = await DBService.getSavedAccounts();
+      if (!mounted) return;
+      setState(() {
+        _accounts = accounts;
+        _isLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = 'No se pudieron cargar las cuentas: $error';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _forget(Map<String, dynamic> account) async {
+    final username = account['username'] as String? ?? '';
+    final shouldForget = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('¿Estás seguro?'),
+        content: Text(
+          'Se quitará @$username de tus cuentas guardadas en este dispositivo. '
+          'La cuenta y su perfil no se eliminarán.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Quitar cuenta'),
+          ),
+        ],
+      ),
+    );
+    if (shouldForget != true || !mounted) return;
+
+    final accountId = account['id'] as String;
+    setState(() => _forgettingAccounts.add(accountId));
+    try {
+      await DBService.forgetAccount(accountId);
+      if (!mounted) return;
+      setState(() {
+        _accounts.removeWhere((saved) => saved['id'] == accountId);
+        _forgettingAccounts.remove(accountId);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('@$username se quitó de tus cuentas guardadas.'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _forgettingAccounts.remove(accountId));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo quitar la cuenta: $error')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (_loadError != null) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_loadError!),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: _isLoading ? null : _reloadAccounts,
+                child: const Text('Reintentar'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Text(
+              'Cambiar de cuenta',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          if (_isLoading && _accounts.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          for (final account in _accounts)
+            ListTile(
+              leading: CircleAvatar(
+                backgroundImage: account['profile_photo'] is Uint8List
+                    ? MemoryImage(account['profile_photo'] as Uint8List)
+                    : null,
+                child: account['profile_photo'] is Uint8List
+                    ? null
+                    : Text(
+                        ((account['display_name'] as String).trim().isNotEmpty
+                                    ? account['display_name'] as String
+                                    : account['username'] as String)
+                                .characters
+                                .firstOrNull
+                                ?.toUpperCase() ??
+                            '?',
+                      ),
+              ),
+              title: Text(
+                (account['display_name'] as String).trim().isNotEmpty
+                    ? account['display_name'] as String
+                    : '@${account['username']}',
+              ),
+              subtitle: Text('@${account['username']}'),
+              trailing: account['is_current'] == true
+                  ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
+                  : IconButton(
+                      tooltip: 'Quitar cuenta guardada',
+                      icon: _forgettingAccounts.contains(account['id'])
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.close),
+                      onPressed: _forgettingAccounts.contains(account['id'])
+                          ? null
+                          : () => _forget(account),
+                    ),
+              onTap:
+                  account['is_current'] == true ||
+                      _forgettingAccounts.contains(account['id'])
+                  ? null
+                  : () => widget.onSwitch(account),
+            ),
+          ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.add)),
+            title: const Text('Agregar otra cuenta'),
+            onTap: widget.onAdd,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────
 //  MODELOS DE DATOS
 // ─────────────────────────────────────────────
+
+// Convierte un id de progreso ("curso:actividad") en un nombre legible.
+String describeActivityId(String id) {
+  final parts = id.split(':');
+  if (parts.length == 2) {
+    final c = int.tryParse(parts[0]);
+    final a = int.tryParse(parts[1]);
+    if (c != null &&
+        a != null &&
+        c < courses.length &&
+        a < courses[c].activities.length) {
+      return '${courses[c].title} · ${courses[c].activities[a].title}';
+    }
+  }
+  return id;
+}
 
 // Representa un curso con su título, ícono y lista de actividades de aprendizaje
 class Course {
@@ -335,7 +577,7 @@ enum ActivityType { quiz, matching, memory, fillBlank, sorting }
 class QuizActivity extends LessonActivity {
   final List<Question> questions;
   const QuizActivity({required super.title, required this.questions})
-      : super(type: ActivityType.quiz);
+    : super(type: ActivityType.quiz);
 }
 
 // Representa una pregunta individual con opciones y respuesta correcta
@@ -343,17 +585,18 @@ class Question {
   final String prompt;
   final List<String> options;
   final int answerIndex;
-  const Question(
-      {required this.prompt,
-      required this.options,
-      required this.answerIndex});
+  const Question({
+    required this.prompt,
+    required this.options,
+    required this.answerIndex,
+  });
 }
 
 // Actividad de relacionar - los usuarios emparejan términos con sus definiciones
 class MatchingActivity extends LessonActivity {
   final List<MatchPair> pairs;
   const MatchingActivity({required super.title, required this.pairs})
-      : super(type: ActivityType.matching);
+    : super(type: ActivityType.matching);
 }
 
 // Representa un par de término y definición para actividades de relacionar
@@ -367,7 +610,7 @@ class MatchPair {
 class MemoryActivity extends LessonActivity {
   final List<MemoryCard> cards;
   const MemoryActivity({required super.title, required this.cards})
-      : super(type: ActivityType.memory);
+    : super(type: ActivityType.memory);
 }
 
 // Representa una tarjeta individual en el juego de memoria con emoji y etiqueta
@@ -381,7 +624,7 @@ class MemoryCard {
 class FillBlankActivity extends LessonActivity {
   final List<FillBlankQuestion> questions;
   const FillBlankActivity({required super.title, required this.questions})
-      : super(type: ActivityType.fillBlank);
+    : super(type: ActivityType.fillBlank);
 }
 
 // Representa una pregunta de espacios en blanco con opciones de respuesta
@@ -389,21 +632,22 @@ class FillBlankQuestion {
   final String sentence; // uses ___ for blank
   final List<String> options;
   final int answerIndex;
-  const FillBlankQuestion(
-      {required this.sentence,
-      required this.options,
-      required this.answerIndex});
+  const FillBlankQuestion({
+    required this.sentence,
+    required this.options,
+    required this.answerIndex,
+  });
 }
 
 // Actividad de ordenamiento - los usuarios deben ordenar elementos en la secuencia correcta
 class SortingActivity extends LessonActivity {
   final String instruction;
   final List<String> correctOrder;
-  const SortingActivity(
-      {required super.title,
-      required this.instruction,
-      required this.correctOrder})
-      : super(type: ActivityType.sorting);
+  const SortingActivity({
+    required super.title,
+    required this.instruction,
+    required this.correctOrder,
+  }) : super(type: ActivityType.sorting);
 }
 
 // ─────────────────────────────────────────────
@@ -434,7 +678,7 @@ final courses = <Course>[
               'No emite CO₂',
               'Consume agua',
               'Usa combustibles fósiles',
-              'Contamina el aire'
+              'Contamina el aire',
             ],
             answerIndex: 0,
           ),
@@ -464,13 +708,13 @@ final courses = <Course>[
         title: 'Completa la oración',
         questions: [
           const FillBlankQuestion(
-            sentence: 'Los paneles ___ convierten la luz solar en electricidad.',
+            sentence:
+                'Los paneles ___ convierten la luz solar en electricidad.',
             options: ['solares', 'eólicos', 'marinos', 'nucleares'],
             answerIndex: 0,
           ),
           const FillBlankQuestion(
-            sentence:
-                'La energía ___ se obtiene del movimiento del viento.',
+            sentence: 'La energía ___ se obtiene del movimiento del viento.',
             options: ['eólica', 'solar', 'hidráulica', 'térmica'],
             answerIndex: 0,
           ),
@@ -504,13 +748,12 @@ final courses = <Course>[
         title: 'Quiz: ¿Qué reciclar?',
         questions: [
           const Question(
-            prompt:
-                '¿Qué material se puede reciclar en el contenedor azul?',
+            prompt: '¿Qué material se puede reciclar en el contenedor azul?',
             options: [
               'Papel y cartón',
               'Restos de comida',
               'Baterías',
-              'Vidrio roto'
+              'Vidrio roto',
             ],
             answerIndex: 0,
           ),
@@ -520,7 +763,7 @@ final courses = <Course>[
               'Usar bolsas reutilizables',
               'Comprar plástico de un solo uso',
               'Tirar todo junto',
-              'Usar más servilletas'
+              'Usar más servilletas',
             ],
             answerIndex: 0,
           ),
@@ -555,8 +798,7 @@ final courses = <Course>[
         title: 'Completa sobre reciclaje',
         questions: [
           const FillBlankQuestion(
-            sentence:
-                'Las tres R del reciclaje son: reducir, ___ y reciclar.',
+            sentence: 'Las tres R del reciclaje son: reducir, ___ y reciclar.',
             options: ['reutilizar', 'rechazar', 'reparar', 'renovar'],
             answerIndex: 0,
           ),
@@ -594,7 +836,7 @@ final courses = <Course>[
               'Producen oxígeno',
               'Generan basura',
               'Aumentan la lluvia ácida',
-              'Contaminan el agua'
+              'Contaminan el agua',
             ],
             answerIndex: 0,
           ),
@@ -609,7 +851,7 @@ final courses = <Course>[
               'Fotosíntesis',
               'Respiración',
               'Digestión',
-              'Evaporación'
+              'Evaporación',
             ],
             answerIndex: 0,
           ),
@@ -645,7 +887,8 @@ final courses = <Course>[
             answerIndex: 0,
           ),
           const FillBlankQuestion(
-            sentence: 'La ___ es el proceso por la que el agua pasa de líquido a vapor.',
+            sentence:
+                'La ___ es el proceso por la que el agua pasa de líquido a vapor.',
             options: ['evaporación', 'condensación', 'fotosíntesis', 'erosión'],
             answerIndex: 0,
           ),
@@ -678,7 +921,8 @@ final courses = <Course>[
         title: 'Quiz: Contaminación atmosférica',
         questions: [
           const Question(
-            prompt: '¿Cuál es la principal fuente de contaminación del aire en las ciudades?',
+            prompt:
+                '¿Cuál es la principal fuente de contaminación del aire en las ciudades?',
             options: ['Vehículos', 'Árboles', 'Lluvia', 'Océanos'],
             answerIndex: 0,
           ),
@@ -693,7 +937,7 @@ final courses = <Course>[
               'Enfermedades respiratorias',
               'Más diversidad animal',
               'Mayor producción agrícola',
-              'Aumento de ozono'
+              'Aumento de ozono',
             ],
             answerIndex: 0,
           ),
@@ -702,8 +946,14 @@ final courses = <Course>[
       MatchingActivity(
         title: 'Relaciona: Contaminante y fuente',
         pairs: const [
-          MatchPair(term: 'CO₂', definition: 'Combustión de combustibles fósiles'),
-          MatchPair(term: 'Ozono', definition: 'Contaminación por reacciones químicas'),
+          MatchPair(
+            term: 'CO₂',
+            definition: 'Combustión de combustibles fósiles',
+          ),
+          MatchPair(
+            term: 'Ozono',
+            definition: 'Contaminación por reacciones químicas',
+          ),
           MatchPair(term: 'Humo', definition: 'Fábricas e industrias'),
           MatchPair(term: 'Polvo', definition: 'Erosión del suelo'),
         ],
@@ -723,17 +973,20 @@ final courses = <Course>[
         title: 'Completa sobre aire limpio',
         questions: [
           const FillBlankQuestion(
-            sentence: 'La ___ es la principal causa de la mala calidad del aire en ciudades.',
+            sentence:
+                'La ___ es la principal causa de la mala calidad del aire en ciudades.',
             options: ['contaminación vehicular', 'lluvia', 'nieve', 'neblina'],
             answerIndex: 0,
           ),
           const FillBlankQuestion(
-            sentence: 'El ___ es un gas que forma parte del efecto invernadero.',
+            sentence:
+                'El ___ es un gas que forma parte del efecto invernadero.',
             options: ['dióxido de carbono', 'oxígeno', 'nitrógeno', 'helio'],
             answerIndex: 0,
           ),
           const FillBlankQuestion(
-            sentence: 'La contaminación del aire causa problemas en el sistema ___.',
+            sentence:
+                'La contaminación del aire causa problemas en el sistema ___.',
             options: ['respiratorio', 'digestivo', 'nervioso', 'óseo'],
             answerIndex: 0,
           ),
@@ -776,7 +1029,7 @@ final courses = <Course>[
               'Muerte de peces y plantas',
               'Mayor producción de oxígeno',
               'Mejor sabor del agua',
-              'Aumento de sales minerales'
+              'Aumento de sales minerales',
             ],
             answerIndex: 0,
           ),
@@ -811,7 +1064,8 @@ final courses = <Course>[
             answerIndex: 0,
           ),
           const FillBlankQuestion(
-            sentence: 'La contaminación del agua afecta principalmente a los ___.',
+            sentence:
+                'La contaminación del agua afecta principalmente a los ___.',
             options: ['organismos acuáticos', 'árboles', 'pájaros', 'insectos'],
             answerIndex: 0,
           ),
@@ -844,12 +1098,13 @@ final courses = <Course>[
         title: 'Quiz: Suelo saludable',
         questions: [
           const Question(
-            prompt: '¿Cuánto tiempo tarda un plástico en degradarse en el suelo?',
+            prompt:
+                '¿Cuánto tiempo tarda un plástico en degradarse en el suelo?',
             options: [
               'Más de 500 años',
               '1 año',
               '10 años',
-              'Nunca se degrada'
+              'Nunca se degrada',
             ],
             answerIndex: 0,
           ),
@@ -864,7 +1119,7 @@ final courses = <Course>[
               'Reducción de nutrientes',
               'Aumento de producción',
               'Mejor retención de agua',
-              'Mayor fertilidad'
+              'Mayor fertilidad',
             ],
             answerIndex: 0,
           ),
@@ -899,13 +1154,19 @@ final courses = <Course>[
             answerIndex: 0,
           ),
           const FillBlankQuestion(
-            sentence: 'Los ___ dañan la estructura del suelo y matan microorganismos.',
+            sentence:
+                'Los ___ dañan la estructura del suelo y matan microorganismos.',
             options: ['pesticidas', 'abonos', 'semillas', 'riegos'],
             answerIndex: 0,
           ),
           const FillBlankQuestion(
             sentence: 'El suelo fértil es esencial para la ___ mundial.',
-            options: ['producción de alimentos', 'construcción', 'minería', 'turismo'],
+            options: [
+              'producción de alimentos',
+              'construcción',
+              'minería',
+              'turismo',
+            ],
             answerIndex: 0,
           ),
         ],
@@ -937,7 +1198,7 @@ final courses = <Course>[
               'Separar residuos por tipo',
               'Tirar todo junto',
               'Quemar plástico',
-              'Enterrar basura'
+              'Enterrar basura',
             ],
             answerIndex: 0,
           ),
@@ -952,7 +1213,7 @@ final courses = <Course>[
               'Tres flechas en triángulo',
               'Círculo verde',
               'Mano abierta',
-              'Hoja verde'
+              'Hoja verde',
             ],
             answerIndex: 0,
           ),
@@ -982,7 +1243,8 @@ final courses = <Course>[
         title: 'Completa sobre reciclaje inteligente',
         questions: [
           const FillBlankQuestion(
-            sentence: 'El ___ puede ser reciclado infinitas veces sin perder calidad.',
+            sentence:
+                'El ___ puede ser reciclado infinitas veces sin perder calidad.',
             options: ['vidrio', 'plástico', 'papel', 'cartón'],
             answerIndex: 0,
           ),
@@ -992,7 +1254,8 @@ final courses = <Course>[
             answerIndex: 0,
           ),
           const FillBlankQuestion(
-            sentence: 'Reciclar ___ ahorra más energía que reciclar otros materiales.',
+            sentence:
+                'Reciclar ___ ahorra más energía que reciclar otros materiales.',
             options: ['aluminio', 'papel', 'vidrio', 'cartón'],
             answerIndex: 0,
           ),
@@ -1025,12 +1288,13 @@ final courses = <Course>[
               'Emisiones de gases de efecto invernadero',
               'Rotación de la Tierra',
               'Lluvia',
-              'Actividad volcánica'
+              'Actividad volcánica',
             ],
             answerIndex: 0,
           ),
           const Question(
-            prompt: '¿Cuánto ha aumentado la temperatura global en el último siglo?',
+            prompt:
+                '¿Cuánto ha aumentado la temperatura global en el último siglo?',
             options: ['Aproximadamente 1°C', 'Nada', '5°C', '10°C'],
             answerIndex: 0,
           ),
@@ -1040,7 +1304,7 @@ final courses = <Course>[
               'Aumento del nivel del mar',
               'Desaparición de montañas',
               'Menor radiación solar',
-              'Menos días soleados'
+              'Menos días soleados',
             ],
             answerIndex: 0,
           ),
@@ -1051,7 +1315,10 @@ final courses = <Course>[
         pairs: const [
           MatchPair(term: 'CO₂', definition: 'Calienta la atmósfera'),
           MatchPair(term: 'Metano', definition: 'Gas de efecto invernadero'),
-          MatchPair(term: 'Deforestación', definition: 'Menos árboles = más CO₂'),
+          MatchPair(
+            term: 'Deforestación',
+            definition: 'Menos árboles = más CO₂',
+          ),
           MatchPair(term: 'Industria', definition: 'Emite muchos gases'),
         ],
       ),
@@ -1070,7 +1337,8 @@ final courses = <Course>[
         title: 'Completa sobre cambio climático',
         questions: [
           const FillBlankQuestion(
-            sentence: 'El ___ es el principal causante del calentamiento global.',
+            sentence:
+                'El ___ es el principal causante del calentamiento global.',
             options: ['dióxido de carbono', 'oxígeno', 'nitrógeno', 'helio'],
             answerIndex: 0,
           ),
@@ -1080,7 +1348,8 @@ final courses = <Course>[
             answerIndex: 0,
           ),
           const FillBlankQuestion(
-            sentence: 'Los cambios en el ___ afectan la agricultura y la biodiversidad.',
+            sentence:
+                'Los cambios en el ___ afectan la agricultura y la biodiversidad.',
             options: ['clima', 'terreno', 'color', 'tamaño'],
             answerIndex: 0,
           ),
@@ -1113,7 +1382,7 @@ final courses = <Course>[
               'Comprar solo lo necesario',
               'Comprar todo lo que ves',
               'No comprar nada',
-              'Comprar por comprar'
+              'Comprar por comprar',
             ],
             answerIndex: 0,
           ),
@@ -1123,7 +1392,7 @@ final courses = <Course>[
               'Comprar productos locales',
               'Importar de lejos',
               'Comprar mucha cantidad',
-              'Elegir empaques grandes'
+              'Elegir empaques grandes',
             ],
             answerIndex: 0,
           ),
@@ -1133,7 +1402,7 @@ final courses = <Course>[
               'Generación de residuos',
               'Menor contaminación',
               'Más espacio verde',
-              'Mejor biodiversidad'
+              'Mejor biodiversidad',
             ],
             answerIndex: 0,
           ),
@@ -1142,9 +1411,15 @@ final courses = <Course>[
       MatchingActivity(
         title: 'Relaciona: Producto y impacto',
         pairs: const [
-          MatchPair(term: 'Ropa de segunda mano', definition: 'Reduce residuos'),
+          MatchPair(
+            term: 'Ropa de segunda mano',
+            definition: 'Reduce residuos',
+          ),
           MatchPair(term: 'Productos locales', definition: 'Menor transporte'),
-          MatchPair(term: 'Empaques biodegradables', definition: 'Menos contaminación'),
+          MatchPair(
+            term: 'Empaques biodegradables',
+            definition: 'Menos contaminación',
+          ),
           MatchPair(term: 'Duradera', definition: 'Menos desecho'),
         ],
       ),
@@ -1225,10 +1500,13 @@ class ProgressStats extends ChangeNotifier {
   int get secondChances => _secondChances;
   int get completedActivities => _completedActivityIds.length;
   bool get isCourseProgressLoaded => _courseProgressLoaded;
-  int get totalLessons => courses.fold<int>(0, (sum, course) => sum + course.activities.length);
+  int get totalLessons =>
+      courses.fold<int>(0, (sum, course) => sum + course.activities.length);
 
-  int get accuracyPercent => _totalAnswers > 0 ? (_correctAnswers * 100 ~/ _totalAnswers) : 0;
-  double get accuracyRatio => _totalAnswers > 0 ? _correctAnswers / _totalAnswers : 0.0;
+  int get accuracyPercent =>
+      _totalAnswers > 0 ? (_correctAnswers * 100 ~/ _totalAnswers) : 0;
+  double get accuracyRatio =>
+      _totalAnswers > 0 ? _correctAnswers / _totalAnswers : 0.0;
 
   Future<int> loadCourseProgress(String username) async {
     if (_progressUsername == username) return 0;
@@ -1249,6 +1527,7 @@ class ProgressStats extends ChangeNotifier {
 
     var activatedProtectors = 0;
     try {
+      await DBService.pullProgress(username);
       final preferences = await SharedPreferences.getInstance();
       if (_progressUsername == username) {
         _completedActivityIds.addAll(
@@ -1256,25 +1535,32 @@ class ProgressStats extends ChangeNotifier {
         );
         _ekostrellas = preferences.getInt('korulab_eko_stars_$username') ?? 0;
         _correctAnswers =
-          preferences.getInt('korulab_correct_answers_$username') ?? 0;
+            preferences.getInt('korulab_correct_answers_$username') ?? 0;
         _totalAnswers =
-          preferences.getInt('korulab_total_answers_$username') ?? 0;
+            preferences.getInt('korulab_total_answers_$username') ?? 0;
         _completedLessons =
-          preferences.getInt('korulab_completed_lessons_$username') ?? 0;
-        _dailyStreak = preferences.getInt('korulab_daily_streak_$username') ?? 0;
-        _hintCredits = preferences.getInt('korulab_hint_credits_$username') ?? 0;
+            preferences.getInt('korulab_completed_lessons_$username') ?? 0;
+        _dailyStreak =
+            preferences.getInt('korulab_daily_streak_$username') ?? 0;
+        _hintCredits =
+            preferences.getInt('korulab_hint_credits_$username') ?? 0;
         _streakProtectors =
             preferences.getInt('korulab_streak_protectors_$username') ?? 0;
         _starMultipliers =
-          preferences.getInt('korulab_star_multipliers_$username') ?? 0;
+            preferences.getInt('korulab_star_multipliers_$username') ?? 0;
         _secondChances =
-          preferences.getInt('korulab_second_chances_$username') ?? 0;
-        final savedDate = preferences.getString('korulab_last_lesson_$username');
-        _lastLessonDate = savedDate == null ? null : DateTime.tryParse(savedDate);
+            preferences.getInt('korulab_second_chances_$username') ?? 0;
+        final savedDate = preferences.getString(
+          'korulab_last_lesson_$username',
+        );
+        _lastLessonDate = savedDate == null
+            ? null
+            : DateTime.tryParse(savedDate);
 
         final today = DateTime.now();
         final todayDate = DateTime(today.year, today.month, today.day);
-        final hadMissedDays = _lastLessonDate != null &&
+        final hadMissedDays =
+            _lastLessonDate != null &&
             todayDate.difference(_lastLessonDate!).inDays > 1;
         activatedProtectors = _activateMissedDayProtectors(todayDate);
         if (hadMissedDays) await _saveUserProgress();
@@ -1311,9 +1597,11 @@ class ProgressStats extends ChangeNotifier {
 
   bool isCourseUnlocked(int courseIndex) {
     for (var index = 0; index < courseIndex; index++) {
-      for (var activityIndex = 0;
-          activityIndex < courses[index].activities.length;
-          activityIndex++) {
+      for (
+        var activityIndex = 0;
+        activityIndex < courses[index].activities.length;
+        activityIndex++
+      ) {
         if (!_completedActivityIds.contains('$index:$activityIndex')) {
           return false;
         }
@@ -1322,11 +1610,39 @@ class ProgressStats extends ChangeNotifier {
     return true;
   }
 
+  // Actividades de cursos de profesores -> id de progreso.
+  final Map<LessonActivity, String> customActivityIds = {};
+
   bool isActivityUnlocked(LessonActivity activity) {
+    final customId = customActivityIds[activity];
+    if (customId != null) {
+      final parts = customId.split(':');
+      if (parts.length != 2) return true;
+      final targetCourse = int.tryParse(parts[0]);
+      final targetActivity = int.tryParse(parts[1]);
+      if (targetCourse == null ||
+          targetActivity == null ||
+          targetCourse >= courses.length) {
+        return true;
+      }
+      for (var courseIndex = 0; courseIndex <= targetCourse; courseIndex++) {
+        final end = courseIndex == targetCourse
+            ? targetActivity
+            : courses[courseIndex].activities.length;
+        for (var activityIndex = 0; activityIndex < end; activityIndex++) {
+          if (!_completedActivityIds.contains('$courseIndex:$activityIndex')) {
+            return false;
+          }
+        }
+      }
+      return true;
+    }
     for (var courseIndex = 0; courseIndex < courses.length; courseIndex++) {
-      for (var activityIndex = 0;
-          activityIndex < courses[courseIndex].activities.length;
-          activityIndex++) {
+      for (
+        var activityIndex = 0;
+        activityIndex < courses[courseIndex].activities.length;
+        activityIndex++
+      ) {
         final currentActivity = courses[courseIndex].activities[activityIndex];
         if (identical(currentActivity, activity)) return true;
         if (!_completedActivityIds.contains('$courseIndex:$activityIndex')) {
@@ -1338,6 +1654,8 @@ class ProgressStats extends ChangeNotifier {
   }
 
   String _activityProgressId(LessonActivity activity) {
+    final customId = customActivityIds[activity];
+    if (customId != null) return customId;
     for (var courseIndex = 0; courseIndex < courses.length; courseIndex++) {
       final activityIndex = courses[courseIndex].activities.indexOf(activity);
       if (activityIndex >= 0) return '$courseIndex:$activityIndex';
@@ -1389,6 +1707,7 @@ class ProgressStats extends ChangeNotifier {
         );
       }
     } catch (_) {}
+    unawaited(DBService.pushProgress(username));
   }
 
   bool buyHint() {
@@ -1458,6 +1777,10 @@ class ProgressStats extends ChangeNotifier {
     return _completedActivityIds.contains('teacher:$lessonId');
   }
 
+  bool isActivityCompleted(LessonActivity activity) {
+    return _completedActivityIds.contains(_activityProgressId(activity));
+  }
+
   bool completeTeacherLesson(int lessonId) {
     if (!_courseProgressLoaded ||
         !_completedActivityIds.add('teacher:$lessonId')) {
@@ -1494,11 +1817,15 @@ class ProgressStats extends ChangeNotifier {
     _lastLessonDate = todayDate;
   }
 
-  void reportLessonResult(int correct, int total,
-      {required LessonActivity activity}) {
+  void reportLessonResult(
+    int correct,
+    int total, {
+    required LessonActivity activity,
+    int incorrectAttempts = 0,
+  }) {
     _recordLessonDay();
     _correctAnswers += correct;
-    _totalAnswers += total;
+    _totalAnswers += correct + incorrectAttempts;
     _completedLessons += 1;
     final earnedStars = total > 0 ? (correct * 50 ~/ total) : 0;
     if (_starMultipliers > 0) {
@@ -1649,10 +1976,8 @@ class _RewardShopPageState extends State<RewardShopPage> {
                     'Elimina una opción incorrecta en quizzes y actividades de completar.',
                 price: RewardShopPage.hintPrice,
                 owned: progressStats.hintCredits,
-                onPurchase: () => _showPurchaseResult(
-                  progressStats.buyHint(),
-                  'Pista',
-                ),
+                onPurchase: () =>
+                    _showPurchaseResult(progressStats.buyHint(), 'Pista'),
               ),
               _buildProductCard(
                 icon: Icons.stars_outlined,
@@ -1722,6 +2047,7 @@ class DiscussionSpace {
   final int? id;
   String title;
   String description;
+  final bool isPinned;
   final String author;
   final String authorHandle;
   final String authorRole;
@@ -1733,14 +2059,15 @@ class DiscussionSpace {
     this.id,
     required this.title,
     required this.description,
+    this.isPinned = false,
     required this.author,
     this.authorHandle = '',
     this.authorRole = DBService.roleStudent,
     this.authorPhoto,
     DateTime? createdAt,
     List<DiscussionReply>? replies,
-  })  : createdAt = createdAt ?? DateTime.now(),
-        replies = replies ?? [];
+  }) : createdAt = createdAt ?? DateTime.now(),
+       replies = replies ?? [];
 }
 
 // ─────────────────────────────────────────────
@@ -1796,13 +2123,23 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _currentUsername = DBService.normalizeUsername(widget.username);
     _loadDiscussionSpaces();
+    _loadKorucolNotes();
+    _loadRole();
     _loadProfilePhoto();
     _loadUserProgress();
+    unawaited(NotificationService.startListening(_currentUsername));
+  }
+
+  @override
+  void dispose() {
+    unawaited(NotificationService.stopListening(onlyFor: _currentUsername));
+    super.dispose();
   }
 
   Future<void> _loadUserProgress() async {
-    final activatedProtectors =
-        await progressStats.loadCourseProgress(_currentUsername);
+    final activatedProtectors = await progressStats.loadCourseProgress(
+      _currentUsername,
+    );
     if (!mounted || activatedProtectors == 0) return;
     final protectorLabel = activatedProtectors == 1
         ? 'protector de racha'
@@ -1827,55 +2164,44 @@ class _HomePageState extends State<HomePage> {
       _displayName = profile?['display_name'] as String? ?? '';
       final role = profile?['role'] as String? ?? DBService.roleStudent;
       _userRole = role;
-      _isAdmin = role == DBService.roleAdmin ||
+      _role = role;
+      _isRoleLoaded = true;
+      _roleLoadError = null;
+      _isAdmin =
+          role == DBService.roleAdmin ||
           (profile?['is_admin'] as int? ?? 0) == 1;
       _isTeacher = role == DBService.roleTeacher;
     });
   }
 
-  String get _currentDisplayName => _displayName.trim().isEmpty
-      ? _currentUsername
-      : _displayName.trim();
+  String get _currentDisplayName =>
+      _displayName.trim().isEmpty ? _currentUsername : _displayName.trim();
 
   Future<void> _loadDiscussionSpaces() async {
     final storedSpaces = await DBService.getDiscussionSpaces();
-    if (storedSpaces.isEmpty) {
-      for (final space in _discussionSpaces) {
-        final id = await DBService.createDiscussionSpace(
-          title: space.title,
-          description: space.description,
-          author: space.author,
-          authorHandle: space.authorHandle,
-        );
-        for (final reply in space.replies) {
-          await DBService.addDiscussionReply(
-            discussionId: id,
-            author: reply.author,
-            message: reply.message,
-            authorHandle: reply.authorHandle,
-          );
-        }
-      }
-      await _loadDiscussionSpaces();
-      return;
-    }
 
     final loadedSpaces = storedSpaces.map((space) {
       final replies = (space['replies'] as List<Map<String, dynamic>>)
-          .map((reply) => DiscussionReply(
-                id: reply['id'] as int?,
-                author: reply['author'] as String,
-                authorHandle: reply['author_handle'] as String? ?? '',
-                authorRole: reply['author_role'] as String? ?? DBService.roleStudent,
-                authorPhoto: reply['author_photo'] as Uint8List?,
-                message: reply['message'] as String,
-                createdAt: DateTime.tryParse(reply['created_at'] as String? ?? ''),
-              ))
+          .map(
+            (reply) => DiscussionReply(
+              id: reply['id'] as int?,
+              author: reply['author'] as String,
+              authorHandle: reply['author_handle'] as String? ?? '',
+              authorRole:
+                  reply['author_role'] as String? ?? DBService.roleStudent,
+              authorPhoto: reply['author_photo'] as Uint8List?,
+              message: reply['message'] as String,
+              createdAt: DateTime.tryParse(
+                reply['created_at'] as String? ?? '',
+              ),
+            ),
+          )
           .toList();
       return DiscussionSpace(
         id: space['id'] as int,
         title: space['title'] as String,
         description: space['description'] as String,
+        isPinned: space['is_pinned'] as bool? ?? false,
         author: space['author'] as String,
         authorHandle: space['author_handle'] as String? ?? '',
         authorRole: space['author_role'] as String? ?? DBService.roleStudent,
@@ -1903,6 +2229,19 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _selectedIndex = index;
     });
+    if (index == 1 && _role != DBService.roleAdmin) _loadKorucolNotes();
+  }
+
+  List<Map<String, dynamic>> _korucolNotes = [];
+
+  Future<void> _loadKorucolNotes() async {
+    try {
+      final notes = await loadManageableLessons(
+        _currentUsername,
+        DBService.lessonDestinationKorucol,
+      );
+      if (mounted) setState(() => _korucolNotes = notes);
+    } catch (_) {}
   }
 
   void _openRewardShop() {
@@ -1921,6 +2260,8 @@ class _HomePageState extends State<HomePage> {
         builder: (_) => SettingsPage(
           username: _currentUsername,
           displayName: _currentDisplayName,
+          onOpenProfile: _openProfilePage,
+          onSwitchAccount: _showAccountSwitcher,
         ),
       ),
     );
@@ -1938,8 +2279,114 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _openSupportPage() {
+  String _role = DBService.roleStudent;
+  bool _isRoleLoaded = false;
+  String? _roleLoadError;
+
+  Future<void> _loadRole() async {
+    try {
+      final role = await DBService.getUserRole(_currentUsername);
+      if (!mounted) return;
+      if (role != _role || !_isRoleLoaded || _roleLoadError != null) {
+        setState(() {
+          if (role != _role) _selectedIndex = 0;
+          _role = role;
+          _userRole = role;
+          _isAdmin = role == DBService.roleAdmin;
+          _isTeacher = role == DBService.roleTeacher;
+          _isRoleLoaded = true;
+          _roleLoadError = null;
+        });
+      }
+    } catch (error) {
+      debugPrint('No se pudo cargar el rol de la cuenta: $error');
+      if (mounted) {
+        setState(() => _roleLoadError = 'No se pudo verificar tu rol.');
+      }
+    }
+  }
+
+  void _openSupportReview() {
     Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SupportReviewPage(adminUsername: _currentUsername),
+      ),
+    );
+  }
+
+  void _openRoleManagement() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RoleManagementPage(adminUsername: _currentUsername),
+      ),
+    );
+  }
+
+  void _openStudentProfiles() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            StudentProfilesPage(requesterUsername: _currentUsername),
+      ),
+    );
+  }
+
+  void _openMessages() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MessagesPage(username: _currentUsername),
+      ),
+    );
+  }
+
+  Future<void> _openCreateCourse() async {
+    final created = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TeacherCourseEditorPage(username: _currentUsername),
+      ),
+    );
+    if (!mounted || created != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Unidad publicada en Ruta Eko.')),
+    );
+  }
+
+  Future<void> _openCreateLesson() async {
+    await _openLessonEditor();
+  }
+
+  Future<void> _openCreateKorucolContent() async {
+    await _openLessonEditor(
+      initialDestination: DBService.lessonDestinationKorucol,
+    );
+  }
+
+  Future<void> _openLessonEditor({String? initialDestination}) async {
+    final created = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateTeacherLessonPage(
+          teacherUsername: _currentUsername,
+          initialDestination:
+              initialDestination ?? DBService.lessonDestinationKoruclases,
+        ),
+      ),
+    );
+    if (!mounted || created != true) return;
+    await _loadKorucolNotes();
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('La lección se publicó.')));
+  }
+
+  Future<void> _openSupportPage() async {
+    final sent = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => SupportRequestPage(
@@ -1948,16 +2395,72 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+    if (!mounted || sent != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Tu PQRS se envió correctamente.')),
+    );
   }
 
-  void _onProfileChanged(String displayName, String username, Uint8List? photo) {
+  Future<void> _showAccountSwitcher() async {
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    await DBService.rememberCurrentAccount(
+      displayName: _displayName,
+      profilePhoto: _profilePhoto,
+    );
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => _AccountSwitcherSheet(
+        onSwitch: (account) async {
+          Navigator.pop(sheetContext);
+          try {
+            final username = await DBService.switchAccount(
+              account['id'] as String,
+            );
+            navigator.pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => HomePage(username: username)),
+              (_) => false,
+            );
+          } catch (error) {
+            final text = error is StateError ? error.message : '$error';
+            messenger.showSnackBar(SnackBar(content: Text(text)));
+          }
+        },
+        onAdd: () {
+          Navigator.pop(sheetContext);
+          navigator.push(
+            MaterialPageRoute(
+              builder: (_) => const LoginPage(addAccount: true),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _onProfileChanged(
+    String displayName,
+    String username,
+    Uint8List? photo,
+  ) {
     setState(() {
       _displayName = displayName;
       _currentUsername = username;
       _profilePhoto = photo;
     });
     unawaited(progressStats.loadCourseProgress(username));
+    unawaited(
+      DBService.rememberCurrentAccount(
+        displayName: displayName,
+        profilePhoto: photo,
+      ),
+    );
     _loadDiscussionSpaces();
+    _loadKorucolNotes();
+    _loadRole();
   }
 
   Widget _buildLessonsSection(ThemeData theme) {
@@ -1966,14 +2469,20 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Bienvenido, $_currentDisplayName',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+          Text(
+            'Bienvenido, $_currentDisplayName',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
           const SizedBox(height: 8),
           Text(
-              'Es hora de conocer un poco más de cómo cuidar el planeta!!',
-              style: theme.textTheme.bodyLarge
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            'Es hora de conocer un poco más de cómo cuidar el planeta!!',
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
           const SizedBox(height: 20),
           AnimatedBuilder(
             animation: progressStats,
@@ -2005,51 +2514,160 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
-          const ProgressCard(),
+          ProgressCard(username: _currentUsername),
           const SizedBox(height: 20),
-          Text('Actividades especiales',
-              style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
+          Text(
+            'Actividades especiales',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: SpecialActivityCard(
-                  title: 'KORUCLASES',
-                  subtitle: 'Cursos y actividades sobre sostenibilidad',
-                  icon: Icons.menu_book,
-                  color: Colors.green.shade600,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => KoruclasesPage(
-                        username: _currentUsername,
-                      ),
-                    ),
-                  ),
-                ),
+          SpecialActivityCard(
+            title: 'RUTA EKO',
+            subtitle: 'Un sendero de aprendizaje sobre sostenibilidad',
+            icon: Icons.menu_book,
+            color: Colors.green.shade600,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => RutaEkoPage(username: _currentUsername),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SpecialActivityCard(
-                  title: 'RETOS ECOLÓGICOS',
-                  subtitle: 'Pequeñas acciones para el día a día',
-                  icon: Icons.emoji_events,
-                  color: Colors.teal.shade600,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => EcoChallengesPage(
-                        username: _currentUsername,
-                      ),
-                    ),
-                  ),
-                ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SpecialActivityCard(
+            title: 'RETOS ECOLÓGICOS',
+            subtitle: 'Pequeñas acciones para el día a día',
+            icon: Icons.emoji_events,
+            color: Colors.teal.shade600,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => EcoChallengesPage(username: _currentUsername),
               ),
-            ],
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildRoleDashboardAction({
+    required ThemeData theme,
+    required String title,
+    required String description,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 10,
+        ),
+        leading: CircleAvatar(
+          backgroundColor: theme.colorScheme.primaryContainer,
+          foregroundColor: theme.colorScheme.onPrimaryContainer,
+          child: Icon(icon),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(description),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
+      ),
+    );
+  }
+
+  Widget _buildTeacherDashboard(ThemeData theme) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(
+          'Panel docente',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Crea unidades, comparte contenido y acompaña el avance de tus estudiantes.',
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 20),
+        _buildRoleDashboardAction(
+          theme: theme,
+          title: 'Agregar unidad a Ruta Eko',
+          description: 'Publica una nueva unidad con actividades.',
+          icon: Icons.add_road,
+          onTap: _openCreateCourse,
+        ),
+        _buildRoleDashboardAction(
+          theme: theme,
+          title: 'Agregar contenido a Korucol',
+          description: 'Publica una nota o lección en Korucol.',
+          icon: Icons.post_add,
+          onTap: _openCreateKorucolContent,
+        ),
+        _buildRoleDashboardAction(
+          theme: theme,
+          title: 'Perfiles de estudiantes',
+          description: 'Consulta sus perfiles y progreso de aprendizaje.',
+          icon: Icons.groups_outlined,
+          onTap: _openStudentProfiles,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAdminDashboard(ThemeData theme) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(
+          'Consola de administración',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Gestiona las solicitudes de soporte y los roles de las cuentas.',
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 20),
+        _buildRoleDashboardAction(
+          theme: theme,
+          title: 'Consultar PQRS',
+          description:
+              'Revisa las solicitudes recibidas y actualiza su estado.',
+          icon: Icons.inbox_outlined,
+          onTap: _openSupportReview,
+        ),
+        _buildRoleDashboardAction(
+          theme: theme,
+          title: 'Administrar roles',
+          description:
+              'Asigna los roles de administrador, profesor o estudiante.',
+          icon: Icons.manage_accounts_outlined,
+          onTap: _openRoleManagement,
+        ),
+        _buildRoleDashboardAction(
+          theme: theme,
+          title: 'Gestionar perfiles de estudiantes',
+          description: 'Consulta progreso y elimina cuentas de estudiantes.',
+          icon: Icons.groups_outlined,
+          onTap: _openStudentProfiles,
+        ),
+      ],
     );
   }
 
@@ -2059,18 +2677,28 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Aprende con Korucol',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+          Text(
+            'Aprende con Korucol',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
           const SizedBox(height: 8),
           Text(
             'Ideas y consejos prácticos para cuidar el planeta en casa y en tu comunidad.',
-            style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 30),
-          Text('Contenido destacado',
-              style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
+          Text(
+            'Contenido destacado',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
           const SizedBox(height: 12),
           _buildInfoCard(
             theme,
@@ -2090,8 +2718,34 @@ class _HomePageState extends State<HomePage> {
             'Reutiliza materiales antes de convertirlos en residuos.',
             'Usa frascos limpios para guardar alimentos u organizar objetos pequeños.\n\nConvierte cajas de cartón en organizadores y transforma una camiseta vieja en una bolsa reutilizable.\n\nAntes de reciclar, separa los materiales y sigue las normas de recolección de tu localidad. Pilas y electrónicos deben llevarse a puntos especiales.',
           ),
+          ..._korucolNotes.map((note) => _buildKorucolNoteCard(theme, note)),
         ],
       ),
+    );
+  }
+
+  Widget _buildKorucolNoteCard(ThemeData theme, Map<String, dynamic> note) {
+    final author = note['teacher_name'] ?? 'Profesor';
+    final card = _buildInfoCard(
+      theme,
+      note['title'] as String,
+      '${note['summary']}\nPor $author',
+      note['content'] as String,
+    );
+    if (note['can_manage'] != true) return card;
+    return Stack(
+      children: [
+        card,
+        Positioned(
+          top: 0,
+          right: 36,
+          child: TeacherLessonMenu(
+            lesson: note,
+            username: _currentUsername,
+            onChanged: _loadKorucolNotes,
+          ),
+        ),
+      ],
     );
   }
 
@@ -2101,13 +2755,19 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Korublog',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+          Text(
+            'Korublog',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
           const SizedBox(height: 8),
           Text(
             'Lecturas, historias y noticias del mundo Korulab.',
-            style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 20),
           SizedBox(
@@ -2119,11 +2779,17 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 24),
-          Text('Espacios de discusión',
-              style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
+          Text(
+            'Espacios de discusión',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
           const SizedBox(height: 12),
-          ..._discussionSpaces.map((space) => _buildDiscussionCard(theme, space)),
+          ..._discussionSpaces.map(
+            (space) => _buildDiscussionCard(theme, space),
+          ),
         ],
       ),
     );
@@ -2132,7 +2798,9 @@ class _HomePageState extends State<HomePage> {
   Future<void> _editDiscussionSpace(DiscussionSpace space) async {
     if (space.id == null) return;
     final titleController = TextEditingController(text: space.title);
-    final descriptionController = TextEditingController(text: space.description);
+    final descriptionController = TextEditingController(
+      text: space.description,
+    );
     final result = await showDialog<List<String>>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -2170,8 +2838,6 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
-    titleController.dispose();
-    descriptionController.dispose();
     if (!mounted || result == null) return;
 
     final updated = await DBService.updateDiscussionSpace(
@@ -2183,7 +2849,9 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
     if (!updated) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No tienes permiso para editar esta publicación.')),
+        const SnackBar(
+          content: Text('No tienes permiso para editar esta publicación.'),
+        ),
       );
       return;
     }
@@ -2196,7 +2864,9 @@ class _HomePageState extends State<HomePage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Eliminar publicación'),
-        content: const Text('También se eliminarán sus comentarios. ¿Continuar?'),
+        content: const Text(
+          'También se eliminarán sus comentarios. ¿Continuar?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -2218,35 +2888,80 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
     if (!deleted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No tienes permiso para eliminar esta publicación.')),
+        const SnackBar(
+          content: Text('No tienes permiso para eliminar esta publicación.'),
+        ),
       );
       return;
     }
     await _loadDiscussionSpaces();
   }
 
+  Future<void> _toggleDiscussionPin(DiscussionSpace space) async {
+    if (space.id == null || !_isAdmin) return;
+    try {
+      final updated = await DBService.setDiscussionPinned(
+        adminUsername: _currentUsername,
+        discussionId: space.id!,
+        isPinned: !space.isPinned,
+      );
+      if (!mounted) return;
+      if (!updated) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo fijar la discusión.')),
+        );
+        return;
+      }
+      await _loadDiscussionSpaces();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            space.isPinned
+                ? 'Discusión desfijada.'
+                : 'Discusión fijada en Korublog.',
+          ),
+        ),
+      );
+    } catch (error) {
+      debugPrint('No se pudo cambiar el fijado de la discusión: $error');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo actualizar la discusión.')),
+      );
+    }
+  }
+
   Widget _buildDiscussionCard(ThemeData theme, DiscussionSpace space) {
-    final canManage = _isAdmin ||
-      _isTeacher ||
+    final canManage =
+        _isAdmin ||
+        _isTeacher ||
         DBService.normalizeUsername(space.authorHandle) == _currentUsername;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 14,
+        ),
         leading: CircleAvatar(
           backgroundImage: space.authorPhoto == null
-            ? null
-            : MemoryImage(space.authorPhoto!),
+              ? null
+              : MemoryImage(space.authorPhoto!),
           backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
           child: space.authorPhoto == null
-            ? Icon(Icons.forum, color: theme.colorScheme.primaryContainer)
-            : null,
+              ? Icon(Icons.forum, color: theme.colorScheme.primaryContainer)
+              : null,
         ),
-        title: Text(space.title,
-            style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+        title: Text(
+          '${space.isPinned ? '📌 ' : ''}${space.title}',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Column(
@@ -2296,15 +3011,28 @@ class _HomePageState extends State<HomePage> {
               PopupMenuButton<String>(
                 tooltip: 'Administrar publicación',
                 onSelected: (action) {
+                  if (action == 'pin') _toggleDiscussionPin(space);
                   if (action == 'edit') _editDiscussionSpace(space);
                   if (action == 'delete') _deleteDiscussionSpace(space);
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'edit', child: Text('Editar')),
-                  PopupMenuItem(value: 'delete', child: Text('Eliminar')),
+                itemBuilder: (_) => [
+                  if (_isAdmin)
+                    PopupMenuItem(
+                      value: 'pin',
+                      child: Text(
+                        space.isPinned
+                            ? 'Desfijar discusión'
+                            : 'Fijar discusión',
+                      ),
+                    ),
+                  const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                  const PopupMenuItem(value: 'delete', child: Text('Eliminar')),
                 ],
               ),
-            Icon(Icons.chevron_right, color: theme.colorScheme.primaryContainer),
+            Icon(
+              Icons.chevron_right,
+              color: theme.colorScheme.primaryContainer,
+            ),
           ],
         ),
         onTap: () => _openDiscussion(space),
@@ -2359,9 +3087,6 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
-    titleController.dispose();
-    descriptionController.dispose();
-
     if (!mounted || result == null) return;
     var wasSaved = false;
     try {
@@ -2374,9 +3099,9 @@ class _HomePageState extends State<HomePage> {
       wasSaved = true;
       await _loadDiscussionSpaces();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Publicación creada.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Publicación creada.')));
       }
     } catch (_) {
       if (!mounted) return;
@@ -2417,19 +3142,37 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildInfoCard(
-      ThemeData theme, String title, String subtitle, String details) {
+    ThemeData theme,
+    String title,
+    String subtitle,
+    String details,
+  ) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        title: Text(title,
-            style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
-        subtitle: Text(subtitle,
-            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        trailing: Icon(Icons.arrow_forward, color: theme.colorScheme.primaryContainer),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 16,
+        ),
+        title: Text(
+          title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        trailing: Icon(
+          Icons.arrow_forward,
+          color: theme.colorScheme.primaryContainer,
+        ),
         onTap: () => showDialog<void>(
           context: context,
           builder: (dialogContext) => AlertDialog(
@@ -2450,8 +3193,44 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isAdmin = _role == DBService.roleAdmin;
+    final isTeacher = _role == DBService.roleTeacher;
+    final isStudent = _role == DBService.roleStudent;
+    final destinations = isAdmin
+        ? const [
+            NavigationDestination(
+              icon: Icon(Icons.admin_panel_settings_outlined),
+              selectedIcon: Icon(Icons.admin_panel_settings),
+              label: 'Consola',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.forum_outlined),
+              selectedIcon: Icon(Icons.forum),
+              label: 'Korublog',
+            ),
+          ]
+        : [
+            NavigationDestination(
+              icon: Icon(Icons.school_outlined),
+              selectedIcon: Icon(Icons.dashboard_outlined),
+              label: isTeacher ? 'Panel docente' : 'Página principal',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.video_library_outlined),
+              selectedIcon: Icon(Icons.video_library),
+              label: 'Korucol',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.forum_outlined),
+              selectedIcon: Icon(Icons.forum),
+              label: 'Korublog',
+            ),
+          ];
     return Scaffold(
       key: _scaffoldKey,
+      onDrawerChanged: (open) {
+        if (open) _loadRole();
+      },
       backgroundColor: theme.colorScheme.surface,
       drawer: Drawer(
         child: SafeArea(
@@ -2462,19 +3241,26 @@ class _HomePageState extends State<HomePage> {
                 decoration: BoxDecoration(color: theme.colorScheme.primary),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      radius: 32,
-                      backgroundColor: theme.colorScheme.primaryContainer,
-                      backgroundImage: _profilePhoto == null
-                          ? null
-                          : MemoryImage(_profilePhoto!),
-                      child: _profilePhoto == null
-                          ? Icon(
-                              Icons.person,
-                              size: 32,
-                              color: theme.colorScheme.onPrimaryContainer,
-                            )
-                          : null,
+                    InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _openProfilePage();
+                      },
+                      child: CircleAvatar(
+                        radius: 32,
+                        backgroundColor: theme.colorScheme.primaryContainer,
+                        backgroundImage: _profilePhoto == null
+                            ? null
+                            : MemoryImage(_profilePhoto!),
+                        child: _profilePhoto == null
+                            ? Icon(
+                                Icons.person,
+                                size: 32,
+                                color: theme.colorScheme.onPrimaryContainer,
+                              )
+                            : null,
+                      ),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -2493,22 +3279,24 @@ class _HomePageState extends State<HomePage> {
                           Text(
                             '@$_currentUsername',
                             style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onPrimary.withOpacity(0.8),
+                              color: theme.colorScheme.onPrimary.withOpacity(
+                                0.8,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
+                    IconButton(
+                      tooltip: 'Cambiar de cuenta',
+                      icon: Icon(
+                        Icons.swap_horiz,
+                        color: theme.colorScheme.onPrimary,
+                      ),
+                      onPressed: _showAccountSwitcher,
+                    ),
                   ],
                 ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.account_circle_outlined),
-                title: const Text('Mi perfil'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openProfilePage();
-                },
               ),
               ListTile(
                 leading: const Icon(Icons.settings_outlined),
@@ -2519,14 +3307,54 @@ class _HomePageState extends State<HomePage> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.support_agent),
-                title: const Text('PQRS'),
-                subtitle: const Text('Contactar a @koruadm'),
+                leading: const Icon(Icons.mail_outline),
+                title: const Text('Mensajes'),
+                subtitle: const Text('Avisos y comunicados'),
                 onTap: () {
                   Navigator.pop(context);
-                  _openSupportPage();
+                  _openMessages();
                 },
               ),
+              if (_role != DBService.roleAdmin)
+                ListTile(
+                  leading: const Icon(Icons.support_agent),
+                  title: const Text('PQRS'),
+                  subtitle: const Text('Contactar a @koruadm'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openSupportPage();
+                  },
+                ),
+              if (_role == DBService.roleAdmin)
+                ListTile(
+                  leading: const Icon(Icons.inbox_outlined),
+                  title: const Text('Revisión de PQRS'),
+                  subtitle: const Text('Solicitudes recibidas'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openSupportReview();
+                  },
+                ),
+              if (_role == DBService.roleTeacher)
+                ListTile(
+                  leading: const Icon(Icons.dashboard_customize_outlined),
+                  title: const Text('Crear unidad'),
+                  subtitle: const Text('Agregar contenido a Ruta Eko'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openCreateCourse();
+                  },
+                ),
+              if (_role == DBService.roleTeacher)
+                ListTile(
+                  leading: const Icon(Icons.library_add_outlined),
+                  title: const Text('Crear lección'),
+                  subtitle: const Text('Publicar en Ruta Eko o Korucol'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openCreateLesson();
+                  },
+                ),
             ],
           ),
         ),
@@ -2534,14 +3362,18 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         backgroundColor: theme.colorScheme.primary,
         foregroundColor: theme.colorScheme.onPrimary,
+        toolbarHeight: 68,
         leading: IconButton(
           tooltip: 'Abrir menú de perfil',
-          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+          onPressed: _isRoleLoaded
+              ? () => _scaffoldKey.currentState?.openDrawer()
+              : null,
           icon: CircleAvatar(
             radius: 17,
             backgroundColor: theme.colorScheme.primaryContainer,
-            backgroundImage:
-                _profilePhoto == null ? null : MemoryImage(_profilePhoto!),
+            backgroundImage: _profilePhoto == null
+                ? null
+                : MemoryImage(_profilePhoto!),
             child: _profilePhoto == null
                 ? Icon(
                     Icons.person,
@@ -2551,66 +3383,74 @@ class _HomePageState extends State<HomePage> {
                 : null,
           ),
         ),
-        title: Image.asset('assets/images/korulogo.png',
-            height: 60,
+        title: LayoutBuilder(
+          builder: (context, constraints) => Image.asset(
+            'assets/images/korulogo.png',
+            width: constraints.maxWidth,
+            height: 48,
             fit: BoxFit.contain,
             filterQuality: FilterQuality.high,
-            isAntiAlias: true),
+            isAntiAlias: true,
+          ),
+        ),
         centerTitle: true,
         actions: [
-          AnimatedBuilder(
-            animation: progressStats,
-            builder: (context, _) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Tooltip(
-                      message: 'Racha diaria: ${progressStats.dailyStreak} días',
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.local_fire_department, size: 20),
-                          const SizedBox(width: 3),
-                          Text(
-                            '${progressStats.dailyStreak}',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onPrimary,
-                              fontWeight: FontWeight.bold,
+          if (_isRoleLoaded && isStudent) ...[
+            AnimatedBuilder(
+              animation: progressStats,
+              builder: (context, _) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Tooltip(
+                        message:
+                            'Racha diaria: ${progressStats.dailyStreak} días',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.local_fire_department, size: 20),
+                            const SizedBox(width: 3),
+                            Text(
+                              '${progressStats.dailyStreak}',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onPrimary,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Tooltip(
-                      message: '${progressStats.ekostrellas} ekostrellas',
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.star, size: 20),
-                          const SizedBox(width: 3),
-                          Text(
-                            '${progressStats.ekostrellas}',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onPrimary,
-                              fontWeight: FontWeight.bold,
+                      const SizedBox(width: 10),
+                      Tooltip(
+                        message: '${progressStats.ekostrellas} ekostrellas',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star, size: 20),
+                            const SizedBox(width: 3),
+                            Text(
+                              '${progressStats.ekostrellas}',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onPrimary,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.storefront_outlined),
-            tooltip: 'Tienda de recompensas',
-            onPressed: _openRewardShop,
-          ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.storefront_outlined),
+              tooltip: 'Tienda de recompensas',
+              onPressed: _openRewardShop,
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Cerrar sesión',
@@ -2620,7 +3460,8 @@ class _HomePageState extends State<HomePage> {
                 builder: (ctx) => AlertDialog(
                   title: const Text('Cerrar sesión'),
                   content: const Text(
-                      '¿Estás seguro de que quieres cerrar sesión?'),
+                    '¿Estás seguro de que quieres cerrar sesión?',
+                  ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(ctx).pop(),
@@ -2643,32 +3484,40 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: _selectedIndex == 0
-          ? _buildLessonsSection(theme)
+      body: !_isRoleLoaded
+          ? Center(
+              child: _roleLoadError == null
+                  ? const CircularProgressIndicator()
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_roleLoadError!),
+                        const SizedBox(height: 12),
+                        FilledButton(
+                          onPressed: _loadRole,
+                          child: const Text('Reintentar'),
+                        ),
+                      ],
+                    ),
+            )
+          : isAdmin
+          ? _selectedIndex == 0
+                ? _buildAdminDashboard(theme)
+                : _buildKorublogSection(theme)
+          : _selectedIndex == 0
+          ? _role == DBService.roleTeacher
+                ? _buildTeacherDashboard(theme)
+                : _buildLessonsSection(theme)
           : _selectedIndex == 1
-              ? _buildKorucolSection(theme)
-              : _buildKorublogSection(theme),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: _onItemTapped,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.school_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Página principal',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.video_library_outlined),
-            selectedIcon: Icon(Icons.video_library),
-            label: 'Korucol',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.forum_outlined),
-            selectedIcon: Icon(Icons.forum),
-            label: 'Korublog',
-          ),
-        ],
-      ),
+          ? _buildKorucolSection(theme)
+          : _buildKorublogSection(theme),
+      bottomNavigationBar: _isRoleLoaded
+          ? NavigationBar(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: _onItemTapped,
+              destinations: destinations,
+            )
+          : null,
     );
   }
 }
@@ -2681,8 +3530,77 @@ class _HomePageState extends State<HomePage> {
 // ─────────────────────────────────────────────
 
 // Tarjeta que muestra el progreso general del usuario (respuestas, lecciones, racha diaria)
-class ProgressCard extends StatelessWidget {
-  const ProgressCard({super.key});
+class ProgressCard extends StatefulWidget {
+  final String username;
+
+  const ProgressCard({super.key, required this.username});
+
+  @override
+  State<ProgressCard> createState() => _ProgressCardState();
+}
+
+class _ProgressCardState extends State<ProgressCard> {
+  bool _isExpanded = false;
+  bool _userChangedExpansion = false;
+
+  String get _preferenceKey =>
+      'korulab_progress_expanded_${DBService.normalizeUsername(widget.username)}';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExpansionPreference();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProgressCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (DBService.normalizeUsername(oldWidget.username) !=
+        DBService.normalizeUsername(widget.username)) {
+      _isExpanded = false;
+      _userChangedExpansion = false;
+      _loadExpansionPreference();
+    }
+  }
+
+  Future<void> _loadExpansionPreference() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final savedValue = preferences.getBool(_preferenceKey);
+      if (!mounted || _userChangedExpansion || savedValue == null) return;
+      setState(() => _isExpanded = savedValue);
+    } catch (error) {
+      debugPrint('No se pudo cargar la preferencia de progreso: $error');
+    }
+  }
+
+  Future<void> _toggleExpanded() async {
+    final expanded = !_isExpanded;
+    setState(() {
+      _isExpanded = expanded;
+      _userChangedExpansion = true;
+    });
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final saved = await preferences.setBool(_preferenceKey, expanded);
+      if (!saved && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo guardar la preferencia de Progreso.'),
+          ),
+        );
+      }
+    } catch (error) {
+      debugPrint('No se pudo guardar la preferencia de progreso: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo guardar la preferencia de Progreso.'),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2691,55 +3609,88 @@ class ProgressCard extends StatelessWidget {
       animation: progressStats,
       builder: (context, _) {
         return Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           elevation: 3,
           color: theme.colorScheme.secondaryContainer.withOpacity(0.15),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Progreso',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 16, color: theme.colorScheme.onSurface)),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _ProgressRing(
-                        percentage: progressStats.totalLessons == 0
-                            ? 0
-                            : (progressStats.completedActivities * 100 ~/
-                                    progressStats.totalLessons)
-                                .clamp(0, 100)
-                                .toInt(),
-                        label: 'Lecciones hechas',
-                        color: theme.colorScheme.primaryContainer,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _ProgressRing(
-                        percentage: progressStats.accuracyPercent,
-                      label: 'Precisión',
-                        color: theme.colorScheme.secondary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '${progressStats.completedActivities} de ${progressStats.totalLessons} actividades completadas',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+          child: Column(
+            children: [
+              ListTile(
+                leading: Icon(Icons.insights, color: theme.colorScheme.primary),
+                title: Text(
+                  'Progreso',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                    'Sigue avanzando para completar tu primera unidad.',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-              ],
-            ),
+                subtitle: !_isExpanded
+                    ? Text(
+                        '${progressStats.completedActivities} actividades · '
+                        '${progressStats.accuracyPercent}% precisión',
+                      )
+                    : null,
+                trailing: Icon(
+                  _isExpanded ? Icons.expand_less : Icons.expand_more,
+                ),
+                onTap: _toggleExpanded,
+              ),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeInOut,
+                child: _isExpanded
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _ProgressRing(
+                                    percentage: progressStats.totalLessons == 0
+                                        ? 0
+                                        : (progressStats.completedActivities *
+                                                  100 ~/
+                                                  progressStats.totalLessons)
+                                              .clamp(0, 100)
+                                              .toInt(),
+                                    label: 'Lecciones hechas',
+                                    color: theme.colorScheme.primaryContainer,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _ProgressRing(
+                                    percentage: progressStats.accuracyPercent,
+                                    label: 'Precisión',
+                                    color: theme.colorScheme.secondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              '${progressStats.completedActivities} de '
+                              '${progressStats.totalLessons} actividades '
+                              'completadas',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Sigue avanzando para completar tu primera unidad.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : const SizedBox(width: double.infinity),
+              ),
+            ],
           ),
         );
       },
@@ -2816,44 +3767,47 @@ class EcoChallengesPage extends StatefulWidget {
 }
 
 class _EcoChallengesPageState extends State<EcoChallengesPage> {
-  static const _challenges = <({String id, String title, String description, IconData icon})>[
-    (
-      id: 'bottle',
-      title: 'Usa una botella reutilizable',
-      description: 'Evita comprar una botella desechable hoy.',
-      icon: Icons.water_drop_outlined,
-    ),
-    (
-      id: 'recycle',
-      title: 'Separa tus residuos',
-      description: 'Clasifica papel, envases y residuos orgánicos.',
-      icon: Icons.recycling,
-    ),
-    (
-      id: 'lights',
-      title: 'Ahorra energía',
-      description: 'Apaga las luces y desconecta lo que no uses.',
-      icon: Icons.bolt,
-    ),
-    (
-      id: 'walk',
-      title: 'Elige movilidad sostenible',
-      description: 'Camina, usa bicicleta o transporte público en un trayecto.',
-      icon: Icons.directions_walk,
-    ),
-    (
-      id: 'food',
-      title: 'Reduce el desperdicio de comida',
-      description: 'Planifica una comida con lo que ya tienes en casa.',
-      icon: Icons.restaurant_outlined,
-    ),
-    (
-      id: 'reuse',
-      title: 'Dale otro uso a un objeto',
-      description: 'Reutiliza un envase, repara algo o comparte lo que no necesitas.',
-      icon: Icons.recycling_outlined,
-    ),
-  ];
+  static const _challenges =
+      <({String id, String title, String description, IconData icon})>[
+        (
+          id: 'bottle',
+          title: 'Usa una botella reutilizable',
+          description: 'Evita comprar una botella desechable hoy.',
+          icon: Icons.water_drop_outlined,
+        ),
+        (
+          id: 'recycle',
+          title: 'Separa tus residuos',
+          description: 'Clasifica papel, envases y residuos orgánicos.',
+          icon: Icons.recycling,
+        ),
+        (
+          id: 'lights',
+          title: 'Ahorra energía',
+          description: 'Apaga las luces y desconecta lo que no uses.',
+          icon: Icons.bolt,
+        ),
+        (
+          id: 'walk',
+          title: 'Elige movilidad sostenible',
+          description:
+              'Camina, usa bicicleta o transporte público en un trayecto.',
+          icon: Icons.directions_walk,
+        ),
+        (
+          id: 'food',
+          title: 'Reduce el desperdicio de comida',
+          description: 'Planifica una comida con lo que ya tienes en casa.',
+          icon: Icons.restaurant_outlined,
+        ),
+        (
+          id: 'reuse',
+          title: 'Dale otro uso a un objeto',
+          description:
+              'Reutiliza un envase, repara algo o comparte lo que no necesitas.',
+          icon: Icons.recycling_outlined,
+        ),
+      ];
 
   late final String _progressKey = 'korulab_eco_challenges_${widget.username}';
   final Set<String> _completed = {};
@@ -2892,6 +3846,7 @@ class _EcoChallengesPageState extends State<EcoChallengesPage> {
     try {
       final preferences = await SharedPreferences.getInstance();
       await preferences.setStringList(_progressKey, _completed.toList());
+      unawaited(DBService.pushProgress(widget.username));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2940,7 +3895,9 @@ class _EcoChallengesPageState extends State<EcoChallengesPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('$completedCount de ${_challenges.length} acciones completadas'),
+                        Text(
+                          '$completedCount de ${_challenges.length} acciones completadas',
+                        ),
                         const SizedBox(height: 12),
                         LinearProgressIndicator(
                           value: completedCount / _challenges.length,
@@ -2965,18 +3922,44 @@ class _EcoChallengesPageState extends State<EcoChallengesPage> {
                   final isCompleted = _completed.contains(challenge.id);
                   return Card(
                     margin: const EdgeInsets.only(bottom: 10),
-                    color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
-                    child: CheckboxListTile(
-                      value: isCompleted,
-                      onChanged: (value) =>
-                          _toggleChallenge(challenge.id, value),
-                      controlAffinity: ListTileControlAffinity.trailing,
-                      secondary: Icon(
-                        challenge.icon,
-                        color: theme.colorScheme.primaryContainer,
-                      ),
-                      title: Text(challenge.title),
-                      subtitle: Text(challenge.description),
+                    color: theme.colorScheme.surfaceContainerHighest
+                        .withOpacity(0.65),
+                    child: Column(
+                      children: [
+                        CheckboxListTile(
+                          value: isCompleted,
+                          onChanged: (value) =>
+                              _toggleChallenge(challenge.id, value),
+                          controlAffinity: ListTileControlAffinity.trailing,
+                          secondary: Icon(
+                            challenge.icon,
+                            color: theme.colorScheme.primaryContainer,
+                          ),
+                          title: Text(challenge.title),
+                          subtitle: Text(challenge.description),
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 16, bottom: 8),
+                            child: TextButton.icon(
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => EcoChallengeJournalPage(
+                                      username: widget.username,
+                                      challengeId: challenge.id,
+                                      challengeTitle: challenge.title,
+                                    ),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.menu_book_outlined),
+                              label: const Text('Abrir diario'),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 }),
@@ -2986,37 +3969,516 @@ class _EcoChallengesPageState extends State<EcoChallengesPage> {
   }
 }
 
-class KoruclasesPage extends StatefulWidget {
+class EcoChallengeJournalPage extends StatefulWidget {
   final String username;
+  final String challengeId;
+  final String challengeTitle;
 
-  const KoruclasesPage({super.key, required this.username});
+  const EcoChallengeJournalPage({
+    super.key,
+    required this.username,
+    required this.challengeId,
+    required this.challengeTitle,
+  });
 
   @override
-  State<KoruclasesPage> createState() => _KoruclasesPageState();
+  State<EcoChallengeJournalPage> createState() =>
+      _EcoChallengeJournalPageState();
 }
 
-class _KoruclasesPageState extends State<KoruclasesPage> {
-  List<Map<String, dynamic>> _teacherLessons = [];
+class _EcoChallengeJournalPageState extends State<EcoChallengeJournalPage> {
+  final _imagePicker = ImagePicker();
+  List<Map<String, dynamic>> _entries = [];
+  bool _isLoading = true;
+  bool _loadError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEntries();
+  }
+
+  Future<void> _loadEntries() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = false;
+    });
+    try {
+      final entries = await DBService.getEcoJournalEntries(
+        username: widget.username,
+        challengeId: widget.challengeId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _entries = entries;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _loadError = true;
+      });
+    }
+  }
+
+  Future<void> _addEntry() async {
+    final noteController = TextEditingController();
+    final photos = <Uint8List>[];
+    try {
+      final shouldSave = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (context, setModalState) => Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 8,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Nueva nota del día',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '¿Qué hiciste hoy y cómo ayudó a este reto?',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: noteController,
+                    minLines: 4,
+                    maxLines: 7,
+                    maxLength: 1000,
+                    decoration: const InputDecoration(
+                      labelText: 'Tu experiencia',
+                      hintText: 'Escribe los detalles de tu proceso...',
+                      border: OutlineInputBorder(),
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      try {
+                        final images = await _imagePicker.pickMultiImage(
+                          maxWidth: 1600,
+                          maxHeight: 1600,
+                          imageQuality: 85,
+                        );
+                        for (final image in images) {
+                          photos.add(await image.readAsBytes());
+                        }
+                        if (sheetContext.mounted) {
+                          setModalState(() {});
+                        }
+                      } catch (_) {
+                        if (mounted)
+                          _showMessage('No se pudieron cargar las fotos.');
+                      }
+                    },
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: Text(
+                      photos.isEmpty
+                          ? 'Agregar fotos'
+                          : 'Agregar más fotos (${photos.length})',
+                    ),
+                  ),
+                  if (photos.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 94,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: photos.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) => Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.memory(
+                                photos[index],
+                                width: 94,
+                                height: 94,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: IconButton(
+                                onPressed: () =>
+                                    setModalState(() => photos.removeAt(index)),
+                                icon: const Icon(Icons.close),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.black54,
+                                  foregroundColor: Colors.white,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () {
+                      if (noteController.text.trim().isEmpty &&
+                          photos.isEmpty) {
+                        _showMessage('Escribe una nota o agrega una foto.');
+                        return;
+                      }
+                      Navigator.of(sheetContext).pop(true);
+                    },
+                    icon: const Icon(Icons.save_outlined),
+                    label: const Text('Guardar en mi diario'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      if (shouldSave != true) return;
+
+      await DBService.addEcoJournalEntry(
+        username: widget.username,
+        challengeId: widget.challengeId,
+        note: noteController.text,
+        photos: photos,
+      );
+      if (!mounted) return;
+      await _loadEntries();
+      _showMessage('Tu entrada quedó guardada.');
+    } catch (_) {
+      if (mounted)
+        _showMessage('No se pudo guardar la entrada. Inténtalo de nuevo.');
+    }
+  }
+
+  Future<void> _deleteEntry(int entryId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar entrada'),
+        content: const Text('¿Quieres eliminar esta nota y sus fotos?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await DBService.deleteEcoJournalEntry(
+        entryId: entryId,
+        username: widget.username,
+      );
+      await _loadEntries();
+    } catch (_) {
+      if (mounted) _showMessage('No se pudo eliminar la entrada.');
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _formatDate(String value) {
+    final date = DateTime.tryParse(value)?.toLocal();
+    if (date == null) return value;
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$day/$month/$year · $hour:$minute';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Diario del reto'),
+        backgroundColor: theme.colorScheme.primary,
+        foregroundColor: theme.colorScheme.onPrimary,
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _addEntry,
+        icon: const Icon(Icons.add),
+        label: const Text('Nueva entrada'),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _loadError
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('No se pudo cargar tu diario.'),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    onPressed: _loadEntries,
+                    child: const Text('Reintentar'),
+                  ),
+                ],
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+              children: [
+                Text(
+                  widget.challengeTitle,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Registra tus acciones, reflexiones y fotos día a día.',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                if (_entries.isEmpty)
+                  Card(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    child: const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Column(
+                        children: [
+                          Icon(Icons.auto_stories_outlined, size: 40),
+                          SizedBox(height: 12),
+                          Text(
+                            'Tu diario está listo',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          SizedBox(height: 6),
+                          Text(
+                            'Agrega una nota o una foto para contar cómo avanzas con este reto.',
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  ..._entries.map((entry) {
+                    final note = entry['note'] as String;
+                    final photos = entry['photos'] as List<Uint8List>;
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.calendar_today_outlined,
+                                  size: 18,
+                                  color: theme.colorScheme.primaryContainer,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _formatDate(entry['created_at'] as String),
+                                    style: theme.textTheme.labelLarge,
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Eliminar entrada',
+                                  onPressed: () =>
+                                      _deleteEntry(entry['id'] as int),
+                                  icon: const Icon(Icons.delete_outline),
+                                ),
+                              ],
+                            ),
+                            if (note.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(note),
+                            ],
+                            if (photos.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                height: 150,
+                                child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: photos.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(width: 10),
+                                  itemBuilder: (context, index) => ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.memory(
+                                      photos[index],
+                                      width: 150,
+                                      height: 150,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+              ],
+            ),
+    );
+  }
+}
+
+class RutaEkoPage extends StatefulWidget {
+  final String username;
+
+  const RutaEkoPage({super.key, required this.username});
+
+  @override
+  State<RutaEkoPage> createState() => _RutaEkoPageState();
+}
+
+class _RutaEkoPageState extends State<RutaEkoPage> {
+  List<_RutaEkoTrailUnit> _trailUnits = [];
   bool _isLoadingTeacherLessons = true;
+  String? _lessonLoadError;
+  String? _realtimeError;
+  int _lessonLoadRequest = 0;
+  RealtimeChannel? _lessonChangesChannel;
+  Future<void>? _builtInCourseMigration;
 
   @override
   void initState() {
     super.initState();
     progressStats.loadCourseProgress(widget.username);
     _loadTeacherLessons();
+    _subscribeToLessonChanges();
+  }
+
+  void _subscribeToLessonChanges() {
+    _lessonChangesChannel = Supabase.instance.client
+        .channel('ruta-eko-lessons-${widget.username}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: DBService.teacherLessonTable,
+          callback: (_) => _loadTeacherLessons(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: DBService.teacherCourseTable,
+          callback: (_) => _loadTeacherLessons(),
+        )
+        .subscribe((status, error) {
+          if (!mounted) return;
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            setState(() => _realtimeError = null);
+            unawaited(_loadTeacherLessons());
+          } else if (status == RealtimeSubscribeStatus.channelError ||
+              status == RealtimeSubscribeStatus.timedOut) {
+            debugPrint('Ruta Eko realtime error: $error');
+            setState(() {
+              _realtimeError =
+                  'No se pudieron activar las actualizaciones automáticas. '
+                  'Verifica que la migración de Ruta Eko esté aplicada; '
+                  'también puedes deslizar hacia abajo para actualizar.';
+            });
+          }
+        });
   }
 
   Future<void> _loadTeacherLessons() async {
+    final request = ++_lessonLoadRequest;
     try {
-      final lessons = await DBService.getTeacherLessons();
-      if (!mounted) return;
+      if (DBService.normalizeUsername(widget.username) == 'p.yuli') {
+        _builtInCourseMigration ??= DBService.ensureTeacherCourses(
+          teacherUsername: 'p.yuli',
+          courses: [
+            for (final course in courses)
+              {
+                'title': course.title,
+                'subtitle': course.subtitle,
+                'activities': encodeCourseActivities(course),
+              },
+          ],
+        );
+        await _builtInCourseMigration;
+      }
+      final lessons = await loadManageableLessons(
+        widget.username,
+        DBService.lessonDestinationKoruclases,
+      );
+      lessons.sort((a, b) {
+        final aDate = DateTime.tryParse(a['created_at'] as String? ?? '');
+        final bDate = DateTime.tryParse(b['created_at'] as String? ?? '');
+        if (aDate == null && bDate != null) return 1;
+        if (aDate != null && bDate == null) return -1;
+        if (aDate != null && bDate != null) {
+          final dateOrder = aDate.compareTo(bDate);
+          if (dateOrder != 0) return dateOrder;
+        }
+        return (a['id'] as int).compareTo(b['id'] as int);
+      });
+      final courseRows = await loadManageableCourses(widget.username);
+      if (!mounted || request != _lessonLoadRequest) return;
+      final trailUnits = <_RutaEkoTrailUnit>[
+        for (final row in courseRows)
+          _RutaEkoTrailUnit.course(courseFromRow(row), row),
+        for (final row in lessons) _RutaEkoTrailUnit.lesson(row),
+      ]..sort(_compareRutaEkoUnits);
       setState(() {
-        _teacherLessons = lessons;
+        _trailUnits = trailUnits;
+        _lessonLoadError = null;
         _isLoadingTeacherLessons = false;
       });
-    } catch (_) {
-      if (mounted) setState(() => _isLoadingTeacherLessons = false);
+    } catch (error) {
+      debugPrint('No se pudo actualizar Ruta Eko: $error');
+      if (!mounted || request != _lessonLoadRequest) return;
+      if (DBService.normalizeUsername(widget.username) == 'p.yuli') {
+        _builtInCourseMigration = null;
+      }
+      setState(() {
+        _lessonLoadError =
+            DBService.normalizeUsername(widget.username) == 'p.yuli'
+            ? 'No se pudo migrar el contenido inicial. Verifica que p.yuli '
+                  'tenga rol de profesor e inténtalo de nuevo.'
+            : 'No se pudo cargar el sendero. Intenta actualizar.';
+        _isLoadingTeacherLessons = false;
+      });
     }
+  }
+
+  @override
+  void dispose() {
+    final channel = _lessonChangesChannel;
+    if (channel != null) {
+      unawaited(Supabase.instance.client.removeChannel(channel));
+    }
+    super.dispose();
   }
 
   @override
@@ -3025,57 +4487,94 @@ class _KoruclasesPageState extends State<KoruclasesPage> {
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Koruclases'),
+        title: const Text('Ruta Eko'),
         backgroundColor: theme.colorScheme.primary,
         foregroundColor: theme.colorScheme.onPrimary,
       ),
       body: AnimatedBuilder(
         animation: progressStats,
         builder: (context, _) {
-          if (!progressStats.isCourseProgressLoaded || _isLoadingTeacherLessons) {
+          if (!progressStats.isCourseProgressLoaded ||
+              _isLoadingTeacherLessons) {
             return const Center(child: CircularProgressIndicator());
           }
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(
-                'Aprende a tu ritmo',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Completa todas las actividades de un curso para desbloquear el siguiente.',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 20),
-              ...courses.indexed.map(
-                (entry) => CourseCard(
-                  course: entry.$2,
-                  courseIndex: entry.$1,
-                ),
-              ),
-              if (_teacherLessons.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                Text(
-                  'Lecciones de profesores',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
+          return RefreshIndicator(
+            onRefresh: _loadTeacherLessons,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (_lessonLoadError != null || _realtimeError != null)
+                  Card(
+                    color: theme.colorScheme.errorContainer,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(
+                        _lessonLoadError ?? _realtimeError!,
+                        style: TextStyle(
+                          color: theme.colorScheme.onErrorContainer,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                ..._teacherLessons.map(
-                  (lesson) => _TeacherLessonCard(
-                    lesson: lesson,
+                ...[
+                  const SizedBox(height: 20),
+                  Text(
+                    'Sendero de Ruta Eko',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Completa cada unidad para desbloquear la siguiente.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (_trailUnits.isEmpty)
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Text(
+                          'El sendero se está preparando. Inicia sesión con '
+                          'la cuenta docente p.yuli y abre Ruta Eko una vez '
+                          'para migrar el contenido inicial.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    )
+                  else ...[
+                    _UnitTrailProgress(units: _trailUnits),
+                    const SizedBox(height: 16),
+                    for (final entry in _trailUnits.indexed)
+                      if (entry.$2.course != null)
+                        TeacherCourseCard(
+                          row: entry.$2.row,
+                          courseOverride: entry.$2.course,
+                          username: widget.username,
+                          onChanged: _loadTeacherLessons,
+                          unitNumber: entry.$1 + 1,
+                          isUnlocked:
+                              entry.$1 == 0 ||
+                              _trailUnits[entry.$1 - 1].isCompleted,
+                        )
+                      else
+                        _TeacherLessonCard(
+                          unitNumber: entry.$1 + 1,
+                          lesson: entry.$2.row,
+                          username: widget.username,
+                          onChanged: _loadTeacherLessons,
+                          isUnlocked:
+                              entry.$1 == 0 ||
+                              _trailUnits[entry.$1 - 1].isCompleted,
+                        ),
+                  ],
+                ],
               ],
-            ],
+            ),
           );
         },
       ),
@@ -3084,42 +4583,300 @@ class _KoruclasesPageState extends State<KoruclasesPage> {
 }
 
 class _TeacherLessonCard extends StatelessWidget {
+  final int unitNumber;
   final Map<String, dynamic> lesson;
+  final String username;
+  final Future<void> Function() onChanged;
+  final bool isUnlocked;
 
-  const _TeacherLessonCard({required this.lesson});
+  const _TeacherLessonCard({
+    required this.unitNumber,
+    required this.lesson,
+    required this.username,
+    required this.onChanged,
+    required this.isUnlocked,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final lessonId = lesson['id'] as int;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.6),
-      child: ListTile(
-        leading: const CircleAvatar(child: Icon(Icons.menu_book_outlined)),
-        title: Text(lesson['title'] as String),
-        subtitle: Text(
-          '${lesson['summary']}\n${lesson['teacher_name'] ?? 'Profesor'}',
-        ),
-        isThreeLine: true,
-        trailing: AnimatedBuilder(
-          animation: progressStats,
-          builder: (context, _) => Icon(
-            progressStats.isTeacherLessonCompleted(lessonId)
-                ? Icons.check_circle_outline
-                : Icons.chevron_right,
-            color: theme.colorScheme.primaryContainer,
-          ),
-        ),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => _TeacherLessonPage(
-              lesson: lesson,
-            ),
+    final isCompleted = progressStats.isTeacherLessonCompleted(lessonId);
+    final nodeColor = isCompleted || isUnlocked
+        ? theme.colorScheme.primary
+        : theme.colorScheme.outlineVariant;
+    final card = Card(
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      color: isUnlocked
+          ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.75)
+          : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: isUnlocked
+            ? () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => _TeacherLessonPage(lesson: lesson),
+                ),
+              )
+            : () => ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Completa la unidad ${unitNumber - 1} para desbloquear esta.',
+                  ),
+                ),
+              ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'UNIDAD $unitNumber',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: nodeColor,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                lesson['title'] as String,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: isUnlocked
+                      ? theme.colorScheme.onSurface
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                lesson['summary'] as String,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      lesson['teacher_name'] as String? ?? 'Profesor',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  if (lesson['can_manage'] == true)
+                    TeacherLessonMenu(
+                      lesson: lesson,
+                      username: username,
+                      onChanged: onChanged,
+                    ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
+    );
+    return Row(
+      children: [
+        SizedBox(
+          width: 52,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Positioned.fill(
+                child: Center(
+                  child: Container(
+                    width: 4,
+                    color: nodeColor.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: nodeColor,
+                foregroundColor: theme.colorScheme.onPrimary,
+                child: Icon(
+                  isCompleted
+                      ? Icons.check
+                      : isUnlocked
+                      ? Icons.eco_outlined
+                      : Icons.lock_outline,
+                  size: 22,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(child: card),
+      ],
+    );
+  }
+}
+
+class _RutaEkoTrailUnit {
+  final Map<String, dynamic> row;
+  final Course? course;
+
+  const _RutaEkoTrailUnit.course(this.course, this.row);
+
+  const _RutaEkoTrailUnit.lesson(this.row) : course = null;
+
+  int get builtInCourseIndex {
+    if (course == null ||
+        DBService.normalizeUsername(row['teacher_username'] as String? ?? '') !=
+            'p.yuli') {
+      return -1;
+    }
+    return courses.indexWhere((item) => item.title == course!.title);
+  }
+
+  bool get isCompleted => course == null
+      ? progressStats.isTeacherLessonCompleted(row['id'] as int)
+      : course!.activities.isNotEmpty &&
+            course!.activities.every(progressStats.isActivityCompleted);
+
+  DateTime? get createdAt =>
+      DateTime.tryParse(row['created_at'] as String? ?? '');
+}
+
+int _compareRutaEkoUnits(_RutaEkoTrailUnit a, _RutaEkoTrailUnit b) {
+  final aBuiltIn = a.builtInCourseIndex;
+  final bBuiltIn = b.builtInCourseIndex;
+  if (aBuiltIn >= 0 && bBuiltIn >= 0) {
+    return aBuiltIn.compareTo(bBuiltIn);
+  }
+  if (aBuiltIn >= 0) return -1;
+  if (bBuiltIn >= 0) return 1;
+  final aDate = a.createdAt;
+  final bDate = b.createdAt;
+  if (aDate != null && bDate != null) {
+    final dateOrder = aDate.compareTo(bDate);
+    if (dateOrder != 0) return dateOrder;
+  }
+  return (a.row['id'] as int).compareTo(b.row['id'] as int);
+}
+
+class _UnitTrailProgress extends StatelessWidget {
+  final List<_RutaEkoTrailUnit> units;
+
+  const _UnitTrailProgress({required this.units});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final completedUnits = units.where((unit) => unit.isCompleted).length;
+    return Card(
+      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${completedUnits} de ${units.length} unidades completadas'),
+            const SizedBox(height: 10),
+            LinearProgressIndicator(
+              value: units.isEmpty ? 0 : completedUnits / units.length,
+              minHeight: 8,
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Carga lecciones marcando cuáles puede editar o eliminar el usuario.
+Future<List<Map<String, dynamic>>> loadManageableLessons(
+  String username,
+  String destination,
+) async {
+  final lessons = await DBService.getTeacherLessons(destination: destination);
+  return [
+    for (final lesson in lessons)
+      {
+        ...lesson,
+        'can_manage': await DBService.canManageLesson(username, lesson),
+      },
+  ];
+}
+
+class TeacherLessonMenu extends StatelessWidget {
+  final Map<String, dynamic> lesson;
+  final String username;
+  final Future<void> Function() onChanged;
+
+  const TeacherLessonMenu({
+    super.key,
+    required this.lesson,
+    required this.username,
+    required this.onChanged,
+  });
+
+  Future<void> _edit(BuildContext context) async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            CreateTeacherLessonPage(teacherUsername: username, lesson: lesson),
+      ),
+    );
+    if (saved == true) await onChanged();
+  }
+
+  Future<void> _delete(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Eliminar lección'),
+        content: Text('¿Eliminar "${lesson['title']}"? No se puede deshacer.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final deleted = await DBService.deleteTeacherLesson(
+      requesterUsername: username,
+      lessonId: lesson['id'] as int,
+    );
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          deleted ? 'Lección eliminada.' : 'No se pudo eliminar la lección.',
+        ),
+      ),
+    );
+    if (deleted) await onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: 'Opciones',
+      onSelected: (value) =>
+          value == 'edit' ? _edit(context) : _delete(context),
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'edit', child: Text('Editar')),
+        PopupMenuItem(value: 'delete', child: Text('Eliminar')),
+      ],
     );
   }
 }
@@ -3163,18 +4920,23 @@ class _TeacherLessonPage extends StatelessWidget {
                 onPressed: isCompleted
                     ? null
                     : () {
-                        final completed =
-                            progressStats.completeTeacherLesson(lessonId);
+                        final completed = progressStats.completeTeacherLesson(
+                          lessonId,
+                        );
                         if (completed && context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Lección completada. ¡Buen trabajo!'),
+                              content: Text(
+                                'Lección completada. ¡Buen trabajo!',
+                              ),
                             ),
                           );
                         }
                       },
                 icon: Icon(isCompleted ? Icons.check_circle : Icons.done),
-                label: Text(isCompleted ? 'Completada' : 'Marcar como completada'),
+                label: Text(
+                  isCompleted ? 'Completada' : 'Marcar como completada',
+                ),
               ),
             ],
           );
@@ -3213,26 +4975,28 @@ class CourseCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             onTap: isUnlocked
                 ? () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CoursePage(
-                          course: course,
-                          courseIndex: courseIndex,
-                        ),
-                      ),
-                    )
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          CoursePage(course: course, courseIndex: courseIndex),
+                    ),
+                  )
                 : () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Completa el curso anterior para continuar.'),
+                    const SnackBar(
+                      content: Text(
+                        'Completa el curso anterior para continuar.',
                       ),
                     ),
+                  ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
                   CircleAvatar(
                     radius: 28,
-                    backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
+                    backgroundColor: theme.colorScheme.primary.withOpacity(
+                      0.15,
+                    ),
                     child: Icon(
                       course.icon,
                       size: 28,
@@ -3309,40 +5073,48 @@ class SpecialActivityCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       color: color.withOpacity(0.15),
       elevation: 4,
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Container(
-                decoration: BoxDecoration(
+        child: SizedBox(
+          width: double.infinity,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Container(
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: color.withOpacity(0.5), width: 2)),
-                child: CircleAvatar(
-                  radius: 32,
-                  backgroundColor: color.withOpacity(0.2),
-                  child: Icon(icon, size: 32, color: color),
+                    border: Border.all(color: color.withOpacity(0.5), width: 2),
+                  ),
+                  child: CircleAvatar(
+                    radius: 32,
+                    backgroundColor: color.withOpacity(0.2),
+                    child: Icon(icon, size: 32, color: color),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Text(title,
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.onSurface),
-                  textAlign: TextAlign.center),
-              const SizedBox(height: 6),
-              Text(subtitle,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                  textAlign: TextAlign.center),
-            ],
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -3377,11 +5149,13 @@ class DiscussionPage extends StatefulWidget {
 class _DiscussionPageState extends State<DiscussionPage> {
   final _replyController = TextEditingController();
 
-    bool get _canManageSpace => widget.isAdmin || widget.isTeacher ||
+  bool get _canManageSpace =>
+      widget.isAdmin ||
+      widget.isTeacher ||
       DBService.normalizeUsername(widget.space.authorHandle) ==
           DBService.normalizeUsername(widget.username);
 
-    bool _canManageReply(DiscussionReply reply) =>
+  bool _canManageReply(DiscussionReply reply) =>
       widget.isAdmin ||
       widget.isTeacher ||
       DBService.normalizeUsername(reply.authorHandle) ==
@@ -3402,15 +5176,15 @@ class _DiscussionPageState extends State<DiscussionPage> {
       if (!mounted) return;
       setState(() {
         widget.space.replies.add(
-        DiscussionReply(
-          id: replyId,
-          author: widget.displayName,
-          authorHandle: widget.username,
-          authorRole: widget.userRole,
-          authorPhoto: widget.authorPhoto,
-          message: message,
-        ),
-      );
+          DiscussionReply(
+            id: replyId,
+            author: widget.displayName,
+            authorHandle: widget.username,
+            authorRole: widget.userRole,
+            authorPhoto: widget.authorPhoto,
+            message: message,
+          ),
+        );
         _replyController.clear();
       });
     } catch (_) {
@@ -3424,8 +5198,9 @@ class _DiscussionPageState extends State<DiscussionPage> {
 
   Future<void> _editSpace() async {
     final titleController = TextEditingController(text: widget.space.title);
-    final descriptionController =
-        TextEditingController(text: widget.space.description);
+    final descriptionController = TextEditingController(
+      text: widget.space.description,
+    );
     final values = await showDialog<List<String>>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -3463,8 +5238,6 @@ class _DiscussionPageState extends State<DiscussionPage> {
         ],
       ),
     );
-    titleController.dispose();
-    descriptionController.dispose();
     if (!mounted || values == null || widget.space.id == null) return;
 
     final updated = await DBService.updateDiscussionSpace(
@@ -3489,7 +5262,9 @@ class _DiscussionPageState extends State<DiscussionPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Eliminar publicación'),
-        content: const Text('También se eliminarán sus comentarios. ¿Continuar?'),
+        content: const Text(
+          'También se eliminarán sus comentarios. ¿Continuar?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -3509,7 +5284,9 @@ class _DiscussionPageState extends State<DiscussionPage> {
     );
     if (!mounted) return;
     if (!deleted) {
-      _showDiscussionMessage('No tienes permiso para eliminar esta publicación.');
+      _showDiscussionMessage(
+        'No tienes permiso para eliminar esta publicación.',
+      );
       return;
     }
     Navigator.pop(context, true);
@@ -3548,7 +5325,6 @@ class _DiscussionPageState extends State<DiscussionPage> {
         ],
       ),
     );
-    controller.dispose();
     if (!mounted || message == null) return;
     final updated = await DBService.updateDiscussionReply(
       replyId: reply.id!,
@@ -3560,7 +5336,9 @@ class _DiscussionPageState extends State<DiscussionPage> {
       _showDiscussionMessage('No tienes permiso para editar este comentario.');
       return;
     }
-    final index = widget.space.replies.indexWhere((item) => item.id == reply.id);
+    final index = widget.space.replies.indexWhere(
+      (item) => item.id == reply.id,
+    );
     if (index >= 0) {
       setState(() {
         widget.space.replies[index] = DiscussionReply(
@@ -3601,7 +5379,9 @@ class _DiscussionPageState extends State<DiscussionPage> {
     );
     if (!mounted) return;
     if (!deleted) {
-      _showDiscussionMessage('No tienes permiso para eliminar este comentario.');
+      _showDiscussionMessage(
+        'No tienes permiso para eliminar este comentario.',
+      );
       return;
     }
     setState(() {
@@ -3610,9 +5390,9 @@ class _DiscussionPageState extends State<DiscussionPage> {
   }
 
   void _showDiscussionMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -3640,7 +5420,10 @@ class _DiscussionPageState extends State<DiscussionPage> {
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'edit', child: Text('Editar publicación')),
-                PopupMenuItem(value: 'delete', child: Text('Eliminar publicación')),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Text('Eliminar publicación'),
+                ),
               ],
             ),
         ],
@@ -3732,16 +5515,21 @@ class _DiscussionPageState extends State<DiscussionPage> {
                     final canManageReply = _canManageReply(reply);
                     return Card(
                       margin: const EdgeInsets.only(bottom: 10),
-                      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withOpacity(0.65),
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundImage: reply.authorPhoto == null
-                            ? null
-                            : MemoryImage(reply.authorPhoto!),
-                          backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
+                              ? null
+                              : MemoryImage(reply.authorPhoto!),
+                          backgroundColor: theme.colorScheme.primary
+                              .withOpacity(0.2),
                           child: reply.authorPhoto == null
-                            ? Icon(Icons.person, color: theme.colorScheme.primaryContainer)
-                            : null,
+                              ? Icon(
+                                  Icons.person,
+                                  color: theme.colorScheme.primaryContainer,
+                                )
+                              : null,
                         ),
                         title: Text(
                           reply.author,
@@ -3904,7 +5692,10 @@ class CoursePage extends StatelessWidget {
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: Text(course.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          course.title,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: theme.colorScheme.primary,
         foregroundColor: theme.colorScheme.onPrimary,
       ),
@@ -3919,18 +5710,31 @@ class CoursePage extends StatelessWidget {
             final color = _activityColor(activity.type);
             final isUnlocked = progressStats.isActivityUnlocked(activity);
             return ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-              tileColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              tileColor: theme.colorScheme.surfaceContainerHighest.withOpacity(
+                0.5,
+              ),
               leading: CircleAvatar(
                 backgroundColor: color.withOpacity(0.15),
                 child: Icon(_activityIcon(activity.type), color: color),
               ),
-              title: Text(activity.title,
-                  style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
-              subtitle: Text(_activityLabel(activity.type), style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+              title: Text(
+                activity.title,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              subtitle: Text(
+                _activityLabel(activity.type),
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+              ),
               trailing: Icon(
                 isUnlocked ? Icons.play_arrow : Icons.lock_outline,
                 color: isUnlocked
@@ -3941,7 +5745,9 @@ class CoursePage extends StatelessWidget {
                 if (!isUnlocked) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Completa la actividad anterior para continuar.'),
+                      content: Text(
+                        'Completa la actividad anterior para continuar.',
+                      ),
                     ),
                   );
                   return;
@@ -3967,6 +5773,7 @@ class CoursePage extends StatelessWidget {
 class ResultScreen extends StatelessWidget {
   final int score;
   final int total;
+  final int incorrectAttempts;
   final VoidCallback onRetry;
   final String activityName;
 
@@ -3974,6 +5781,7 @@ class ResultScreen extends StatelessWidget {
     super.key,
     required this.score,
     required this.total,
+    this.incorrectAttempts = 0,
     required this.onRetry,
     required this.activityName,
   });
@@ -3981,17 +5789,18 @@ class ResultScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final pct = total > 0 ? score / total : 0.0;
+    final attempts = score + incorrectAttempts;
+    final pct = attempts > 0 ? score / attempts : 0.0;
     final emoji = pct == 1.0
         ? '🏆'
         : pct >= 0.7
-            ? '⭐'
-            : '💪';
+        ? '⭐'
+        : '💪';
     final msg = pct == 1.0
         ? '¡Perfecto!'
         : pct >= 0.7
-            ? '¡Muy bien!'
-            : '¡Sigue practicando!';
+        ? '¡Muy bien!'
+        : '¡Sigue practicando!';
 
     return Center(
       child: Column(
@@ -3999,19 +5808,37 @@ class ResultScreen extends StatelessWidget {
         children: [
           Text(emoji, style: const TextStyle(fontSize: 72)),
           const SizedBox(height: 16),
-          Text(msg,
-              style: theme.textTheme.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+          Text(
+            msg,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
           const SizedBox(height: 8),
-          Text('$score / $total correctas',
-              style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          Text(
+            '$score / $total correctas',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Precisión: ${(pct * 100).toInt()}%'
+            '${incorrectAttempts > 0 ? ' · $incorrectAttempts errores' : ''}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 32),
           ElevatedButton.icon(
             icon: const Icon(Icons.replay),
             label: const Text('Intentar de nuevo'),
             style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: theme.colorScheme.onPrimary),
+              backgroundColor: theme.colorScheme.primary,
+              foregroundColor: theme.colorScheme.onPrimary,
+            ),
             onPressed: onRetry,
           ),
           const SizedBox(height: 12),
@@ -4043,6 +5870,7 @@ class QuizPage extends StatefulWidget {
 class _QuizPageState extends State<QuizPage> {
   int questionIndex = 0;
   int score = 0;
+  int incorrectAttempts = 0;
   int? selectedOption;
   int? _hintedOptionIndex;
   bool completed = false;
@@ -4062,6 +5890,7 @@ class _QuizPageState extends State<QuizPage> {
       selectedOption = null;
       _hintedOptionIndex = null;
       score = 0;
+      incorrectAttempts = 0;
       _reportedCompletion = false;
       shuffledQuestions = List.from(widget.activity.questions)..shuffle();
     });
@@ -4074,6 +5903,7 @@ class _QuizPageState extends State<QuizPage> {
       score,
       shuffledQuestions.length,
       activity: widget.activity,
+      incorrectAttempts: incorrectAttempts,
     );
   }
 
@@ -4081,7 +5911,12 @@ class _QuizPageState extends State<QuizPage> {
     if (selectedOption != null) return;
     setState(() {
       selectedOption = index;
-      if (shuffledQuestions[questionIndex].answerIndex == index) score++;
+      if (shuffledQuestions[questionIndex].answerIndex == index) {
+        score++;
+      } else {
+        incorrectAttempts++;
+        unawaited(vibrateOnWrongAnswer());
+      }
     });
   }
 
@@ -4137,6 +5972,7 @@ class _QuizPageState extends State<QuizPage> {
             ? ResultScreen(
                 score: score,
                 total: shuffledQuestions.length,
+                incorrectAttempts: incorrectAttempts,
                 onRetry: _reset,
                 activityName: widget.activity.title,
               )
@@ -4158,24 +5994,35 @@ class _QuizPageState extends State<QuizPage> {
         ),
         const SizedBox(height: 12),
         Text(
-            'Pregunta ${questionIndex + 1} de ${shuffledQuestions.length}',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          'Pregunta ${questionIndex + 1} de ${shuffledQuestions.length}',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
         const SizedBox(height: 16),
-        Text(question.prompt,
-            style: theme.textTheme.headlineSmall
-                ?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+        Text(
+          question.prompt,
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
         Align(
           alignment: Alignment.centerRight,
-          child: selectedOption != null &&
+          child:
+              selectedOption != null &&
                   question.answerIndex != selectedOption &&
                   progressStats.secondChances > 0
               ? TextButton.icon(
                   onPressed: _useSecondChance,
                   icon: const Icon(Icons.replay),
-                  label: Text('Segundo intento (${progressStats.secondChances})'),
+                  label: Text(
+                    'Segundo intento (${progressStats.secondChances})',
+                  ),
                 )
               : TextButton.icon(
-                  onPressed: selectedOption != null ||
+                  onPressed:
+                      selectedOption != null ||
                           _hintedOptionIndex != null ||
                           progressStats.hintCredits == 0
                       ? null
@@ -4206,19 +6053,27 @@ class _QuizPageState extends State<QuizPage> {
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: isEliminated
-                  ? theme.colorScheme.outlineVariant
-                  : cardColor ?? theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                    ? theme.colorScheme.outlineVariant
+                    : cardColor ??
+                          theme.colorScheme.surfaceContainerHighest.withOpacity(
+                            0.5,
+                          ),
                 foregroundColor: isEliminated
-                  ? theme.colorScheme.onSurfaceVariant
-                  : textColor ?? theme.colorScheme.onSurface,
+                    ? theme.colorScheme.onSurfaceVariant
+                    : textColor ?? theme.colorScheme.onSurface,
                 padding: const EdgeInsets.symmetric(
-                    vertical: 16, horizontal: 14),
+                  vertical: 16,
+                  horizontal: 14,
+                ),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(
-                      color: isSelected ? theme.colorScheme.primaryContainer : Colors.transparent,
-                      width: 2,
-                    )),
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                    color: isSelected
+                        ? theme.colorScheme.primaryContainer
+                        : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
               ),
               onPressed: isEliminated ? null : () => selectOption(index),
               child: Align(
@@ -4233,11 +6088,16 @@ class _QuizPageState extends State<QuizPage> {
         }),
         const Spacer(),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.primaryContainer, foregroundColor: theme.colorScheme.onPrimaryContainer),
+          style: FilledButton.styleFrom(
+            backgroundColor: theme.colorScheme.primaryContainer,
+            foregroundColor: theme.colorScheme.onPrimaryContainer,
+          ),
           onPressed: selectedOption == null ? null : nextQuestion,
-          child: Text(questionIndex + 1 == shuffledQuestions.length
-              ? 'Finalizar'
-              : 'Siguiente'),
+          child: Text(
+            questionIndex + 1 == shuffledQuestions.length
+                ? 'Finalizar'
+                : 'Siguiente',
+          ),
         ),
       ],
     );
@@ -4261,6 +6121,7 @@ class _MatchingPageState extends State<MatchingPage> {
   String? selectedTerm;
   Map<String, String> matched = {};
   Set<String> wrongAttempts = {};
+  int incorrectAttempts = 0;
   bool completed = false;
   bool _reportedCompletion = false;
 
@@ -4277,6 +6138,7 @@ class _MatchingPageState extends State<MatchingPage> {
     selectedTerm = null;
     matched = {};
     wrongAttempts = {};
+    incorrectAttempts = 0;
     completed = false;
     _reportedCompletion = false;
   }
@@ -4303,12 +6165,15 @@ class _MatchingPageState extends State<MatchingPage> {
               widget.activity.pairs.length,
               widget.activity.pairs.length,
               activity: widget.activity,
+              incorrectAttempts: incorrectAttempts,
             );
           }
         }
       });
     } else {
       setState(() {
+        incorrectAttempts++;
+        unawaited(vibrateOnWrongAnswer());
         wrongAttempts.add('${selectedTerm!}_$def');
         selectedTerm = null;
       });
@@ -4334,6 +6199,7 @@ class _MatchingPageState extends State<MatchingPage> {
             ? ResultScreen(
                 score: widget.activity.pairs.length,
                 total: widget.activity.pairs.length,
+                incorrectAttempts: incorrectAttempts,
                 onRetry: () => setState(_reset),
                 activityName: widget.activity.title,
               )
@@ -4341,7 +6207,9 @@ class _MatchingPageState extends State<MatchingPage> {
                 children: [
                   Text(
                     'Toca un término y luego su definición correcta.',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
@@ -4352,10 +6220,13 @@ class _MatchingPageState extends State<MatchingPage> {
                         Expanded(
                           child: Column(
                             children: [
-                              Text('Términos',
-                                  style: theme.textTheme.labelLarge?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: theme.colorScheme.onSurface)),
+                              Text(
+                                'Términos',
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.onSurface,
+                                ),
+                              ),
                               const SizedBox(height: 8),
                               ...terms.map((term) {
                                 final isMatched = matched.containsKey(term);
@@ -4365,30 +6236,44 @@ class _MatchingPageState extends State<MatchingPage> {
                                   child: GestureDetector(
                                     onTap: () => _onTermTap(term),
                                     child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 200),
+                                      duration: const Duration(
+                                        milliseconds: 200,
+                                      ),
                                       width: double.infinity,
                                       padding: const EdgeInsets.symmetric(
-                                          vertical: 14, horizontal: 10),
+                                        vertical: 14,
+                                        horizontal: 10,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: isMatched
-                                            ? Colors.green.shade800.withOpacity(0.7)
+                                            ? Colors.green.shade800.withOpacity(
+                                                0.7,
+                                              )
                                             : isSelected
-                                                ? Colors.purple.shade900.withOpacity(0.8)
-                                                : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                                            ? Colors.purple.shade900
+                                                  .withOpacity(0.8)
+                                            : theme
+                                                  .colorScheme
+                                                  .surfaceContainerHighest
+                                                  .withOpacity(0.5),
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
-                                            color: isMatched
-                                                ? Colors.green.shade400
-                                                : isSelected
-                                                    ? Colors.purple.shade400
-                                                    : Colors.transparent,
-                                            width: 2),
+                                          color: isMatched
+                                              ? Colors.green.shade400
+                                              : isSelected
+                                              ? Colors.purple.shade400
+                                              : Colors.transparent,
+                                          width: 2,
+                                        ),
                                       ),
-                                      child: Text(term,
-                                          style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.bold),
-                                          textAlign: TextAlign.center),
+                                      child: Text(
+                                        term,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
                                     ),
                                   ),
                                 );
@@ -4401,41 +6286,60 @@ class _MatchingPageState extends State<MatchingPage> {
                         Expanded(
                           child: Column(
                             children: [
-                              Text('Definiciones',
-                                  style: theme.textTheme.labelLarge?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: theme.colorScheme.onSurface)),
+                              Text(
+                                'Definiciones',
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.onSurface,
+                                ),
+                              ),
                               const SizedBox(height: 8),
                               ...definitions.map((def) {
                                 final isMatched = matched.containsValue(def);
-                                final isWrong = wrongAttempts.any((k) => k.endsWith('_$def'));
+                                final isWrong = wrongAttempts.any(
+                                  (k) => k.endsWith('_$def'),
+                                );
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 10),
                                   child: GestureDetector(
                                     onTap: () => _onDefinitionTap(def),
                                     child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 200),
+                                      duration: const Duration(
+                                        milliseconds: 200,
+                                      ),
                                       width: double.infinity,
                                       padding: const EdgeInsets.symmetric(
-                                          vertical: 14, horizontal: 10),
+                                        vertical: 14,
+                                        horizontal: 10,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: isMatched
-                                            ? Colors.green.shade800.withOpacity(0.7)
+                                            ? Colors.green.shade800.withOpacity(
+                                                0.7,
+                                              )
                                             : isWrong
-                                                ? Colors.red.shade900.withOpacity(0.8)
-                                                : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                                            ? Colors.red.shade900.withOpacity(
+                                                0.8,
+                                              )
+                                            : theme
+                                                  .colorScheme
+                                                  .surfaceContainerHighest
+                                                  .withOpacity(0.5),
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
-                                            color: isMatched
-                                                ? Colors.green.shade400
-                                                : isWrong
-                                                    ? Colors.red.shade400
-                                                    : Colors.transparent,
-                                            width: 2),
+                                          color: isMatched
+                                              ? Colors.green.shade400
+                                              : isWrong
+                                              ? Colors.red.shade400
+                                              : Colors.transparent,
+                                          width: 2,
+                                        ),
                                       ),
-                                      child: Text(def,
-                                          style: const TextStyle(fontSize: 12),
-                                          textAlign: TextAlign.center),
+                                      child: Text(
+                                        def,
+                                        style: const TextStyle(fontSize: 12),
+                                        textAlign: TextAlign.center,
+                                      ),
                                     ),
                                   ),
                                 );
@@ -4468,6 +6372,7 @@ class _MemoryPageState extends State<MemoryPage> {
   late List<MemoryItem> cardItems;
   List<int> selectedIndices = [];
   int score = 0;
+  int incorrectAttempts = 0;
   bool completed = false;
   bool busy = false;
   bool _reportedCompletion = false;
@@ -4490,13 +6395,15 @@ class _MemoryPageState extends State<MemoryPage> {
     cardItems = doubled.map((c) => MemoryItem(card: c)).toList();
     selectedIndices.clear();
     score = 0;
+    incorrectAttempts = 0;
     completed = false;
     busy = false;
     _reportedCompletion = false;
   }
 
   void _onCardTap(int index) {
-    if (busy || cardItems[index].isFlipped || cardItems[index].isMatched) return;
+    if (busy || cardItems[index].isFlipped || cardItems[index].isMatched)
+      return;
 
     setState(() {
       cardItems[index].isFlipped = true;
@@ -4523,12 +6430,15 @@ class _MemoryPageState extends State<MemoryPage> {
                 widget.activity.cards.length,
                 widget.activity.cards.length,
                 activity: widget.activity,
+                incorrectAttempts: incorrectAttempts,
               );
             }
           }
         });
       } else {
         setState(() {
+          incorrectAttempts++;
+          unawaited(vibrateOnWrongAnswer());
           busy = true;
         });
         Timer(const Duration(seconds: 1), () {
@@ -4561,6 +6471,7 @@ class _MemoryPageState extends State<MemoryPage> {
             ? ResultScreen(
                 score: widget.activity.cards.length,
                 total: widget.activity.cards.length,
+                incorrectAttempts: incorrectAttempts,
                 onRetry: _reset,
                 activityName: widget.activity.title,
               )
@@ -4568,18 +6479,21 @@ class _MemoryPageState extends State<MemoryPage> {
                 children: [
                   Text(
                     'Encuentra las parejas de iconos ecológicos.',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
                   Expanded(
                     child: GridView.builder(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 0.85,
-                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: 0.85,
+                          ),
                       itemCount: cardItems.length,
                       itemBuilder: (context, index) {
                         final item = cardItems[index];
@@ -4591,31 +6505,44 @@ class _MemoryPageState extends State<MemoryPage> {
                             duration: const Duration(milliseconds: 300),
                             decoration: BoxDecoration(
                               color: showFace
-                                  ? theme.colorScheme.primaryContainer.withOpacity(0.2)
-                                  : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                                  ? theme.colorScheme.primaryContainer
+                                        .withOpacity(0.2)
+                                  : theme.colorScheme.surfaceContainerHighest
+                                        .withOpacity(0.5),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: showFace ? theme.colorScheme.primaryContainer : theme.colorScheme.outlineVariant,
+                                color: showFace
+                                    ? theme.colorScheme.primaryContainer
+                                    : theme.colorScheme.outlineVariant,
                                 width: 2,
                               ),
                               boxShadow: showFace
                                   ? [
                                       BoxShadow(
-                                          color: theme.colorScheme.primary.withOpacity(0.2),
-                                          blurRadius: 8)
+                                        color: theme.colorScheme.primary
+                                            .withOpacity(0.2),
+                                        blurRadius: 8,
+                                      ),
                                     ]
                                   : null,
                             ),
                             child: Center(
                               child: showFace
                                   ? Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
-                                        Text(item.card.emoji, style: const TextStyle(fontSize: 32)),
+                                        Text(
+                                          item.card.emoji,
+                                          style: const TextStyle(fontSize: 32),
+                                        ),
                                         const SizedBox(height: 6),
                                         Text(
                                           item.card.label,
-                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                           textAlign: TextAlign.center,
                                         ),
                                       ],
@@ -4642,7 +6569,11 @@ class MemoryItem {
   final MemoryCard card;
   bool isFlipped = false;
   bool isMatched = false;
-  MemoryItem({required this.card, this.isFlipped = false, this.isMatched = false});
+  MemoryItem({
+    required this.card,
+    this.isFlipped = false,
+    this.isMatched = false,
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -4659,6 +6590,7 @@ class FillBlankPage extends StatefulWidget {
 class _FillBlankPageState extends State<FillBlankPage> {
   int currentQuestionIndex = 0;
   int score = 0;
+  int incorrectAttempts = 0;
   int? selectedOptionIndex;
   int? _hintedOptionIndex;
   bool completed = false;
@@ -4668,6 +6600,7 @@ class _FillBlankPageState extends State<FillBlankPage> {
     setState(() {
       currentQuestionIndex = 0;
       score = 0;
+      incorrectAttempts = 0;
       selectedOptionIndex = null;
       _hintedOptionIndex = null;
       completed = false;
@@ -4679,8 +6612,12 @@ class _FillBlankPageState extends State<FillBlankPage> {
     if (selectedOptionIndex != null) return;
     setState(() {
       selectedOptionIndex = index;
-      if (widget.activity.questions[currentQuestionIndex].answerIndex == index) {
+      if (widget.activity.questions[currentQuestionIndex].answerIndex ==
+          index) {
         score++;
+      } else {
+        incorrectAttempts++;
+        unawaited(vibrateOnWrongAnswer());
       }
     });
   }
@@ -4718,6 +6655,7 @@ class _FillBlankPageState extends State<FillBlankPage> {
           score,
           widget.activity.questions.length,
           activity: widget.activity,
+          incorrectAttempts: incorrectAttempts,
         );
       }
     } else {
@@ -4745,6 +6683,7 @@ class _FillBlankPageState extends State<FillBlankPage> {
             ? ResultScreen(
                 score: score,
                 total: widget.activity.questions.length,
+                incorrectAttempts: incorrectAttempts,
                 onRetry: _reset,
                 activityName: widget.activity.title,
               )
@@ -4771,7 +6710,9 @@ class _FillBlankPageState extends State<FillBlankPage> {
         const SizedBox(height: 12),
         Text(
           'Pregunta ${currentQuestionIndex + 1} de ${widget.activity.questions.length}',
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 24),
         Container(
@@ -4779,31 +6720,39 @@ class _FillBlankPageState extends State<FillBlankPage> {
           decoration: BoxDecoration(
             color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.5)),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withOpacity(0.5),
+            ),
           ),
           child: RichText(
             textAlign: TextAlign.center,
             text: TextSpan(
-              style: theme.textTheme.titleLarge?.copyWith(height: 1.6, color: theme.colorScheme.onSurface),
+              style: theme.textTheme.titleLarge?.copyWith(
+                height: 1.6,
+                color: theme.colorScheme.onSurface,
+              ),
               children: [
                 TextSpan(text: part1),
                 WidgetSpan(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     margin: const EdgeInsets.symmetric(horizontal: 8),
                     decoration: BoxDecoration(
                       color: selectedOptionIndex == null
                           ? theme.colorScheme.surfaceContainerHighest
                           : (q.answerIndex == selectedOptionIndex
-                              ? Colors.green.shade800
-                              : Colors.red.shade800),
+                                ? Colors.green.shade800
+                                : Colors.red.shade800),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: selectedOptionIndex == null
                             ? theme.colorScheme.outline
                             : (q.answerIndex == selectedOptionIndex
-                                ? Colors.green.shade400
-                                : Colors.red.shade400),
+                                  ? Colors.green.shade400
+                                  : Colors.red.shade400),
                         width: 2,
                       ),
                     ),
@@ -4825,16 +6774,20 @@ class _FillBlankPageState extends State<FillBlankPage> {
         ),
         Align(
           alignment: Alignment.centerRight,
-          child: selectedOptionIndex != null &&
+          child:
+              selectedOptionIndex != null &&
                   q.answerIndex != selectedOptionIndex &&
                   progressStats.secondChances > 0
               ? TextButton.icon(
                   onPressed: _useSecondChance,
                   icon: const Icon(Icons.replay),
-                  label: Text('Segundo intento (${progressStats.secondChances})'),
+                  label: Text(
+                    'Segundo intento (${progressStats.secondChances})',
+                  ),
                 )
               : TextButton.icon(
-                  onPressed: selectedOptionIndex != null ||
+                  onPressed:
+                      selectedOptionIndex != null ||
                           _hintedOptionIndex != null ||
                           progressStats.hintCredits == 0
                       ? null
@@ -4865,16 +6818,24 @@ class _FillBlankPageState extends State<FillBlankPage> {
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: isEliminated
-                  ? theme.colorScheme.outlineVariant
-                  : cardColor ?? theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                    ? theme.colorScheme.outlineVariant
+                    : cardColor ??
+                          theme.colorScheme.surfaceContainerHighest.withOpacity(
+                            0.5,
+                          ),
                 foregroundColor: isEliminated
-                  ? theme.colorScheme.onSurfaceVariant
-                  : textColor ?? theme.colorScheme.onSurface,
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+                    ? theme.colorScheme.onSurfaceVariant
+                    : textColor ?? theme.colorScheme.onSurface,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 14,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                   side: BorderSide(
-                    color: isSelected ? theme.colorScheme.primaryContainer : Colors.transparent,
+                    color: isSelected
+                        ? theme.colorScheme.primaryContainer
+                        : Colors.transparent,
                     width: 2,
                   ),
                 ),
@@ -4892,11 +6853,16 @@ class _FillBlankPageState extends State<FillBlankPage> {
         }),
         const Spacer(),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.primaryContainer, foregroundColor: theme.colorScheme.onPrimaryContainer),
+          style: FilledButton.styleFrom(
+            backgroundColor: theme.colorScheme.primaryContainer,
+            foregroundColor: theme.colorScheme.onPrimaryContainer,
+          ),
           onPressed: selectedOptionIndex == null ? null : _nextQuestion,
-          child: Text(currentQuestionIndex + 1 == widget.activity.questions.length
-              ? 'Finalizar'
-              : 'Siguiente'),
+          child: Text(
+            currentQuestionIndex + 1 == widget.activity.questions.length
+                ? 'Finalizar'
+                : 'Siguiente',
+          ),
         ),
       ],
     );
@@ -4919,6 +6885,7 @@ class _SortingPageState extends State<SortingPage> {
   bool completed = false;
   bool hasError = false;
   bool _reportedCompletion = false;
+  int incorrectAttempts = 0;
 
   @override
   void initState() {
@@ -4932,6 +6899,7 @@ class _SortingPageState extends State<SortingPage> {
       completed = false;
       hasError = false;
       _reportedCompletion = false;
+      incorrectAttempts = 0;
     });
   }
 
@@ -4954,11 +6922,14 @@ class _SortingPageState extends State<SortingPage> {
           widget.activity.correctOrder.length,
           widget.activity.correctOrder.length,
           activity: widget.activity,
+          incorrectAttempts: incorrectAttempts,
         );
       }
     } else {
       setState(() {
         hasError = true;
+        incorrectAttempts++;
+        unawaited(vibrateOnWrongAnswer());
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -4992,6 +6963,7 @@ class _SortingPageState extends State<SortingPage> {
             ? ResultScreen(
                 score: widget.activity.correctOrder.length,
                 total: widget.activity.correctOrder.length,
+                incorrectAttempts: incorrectAttempts,
                 onRetry: _reset,
                 activityName: widget.activity.title,
               )
@@ -5001,23 +6973,23 @@ class _SortingPageState extends State<SortingPage> {
                   Text(
                     widget.activity.instruction,
                     style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.onSurface,
-                        ),
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Mantén presionado y arrastra para reordenar los pasos.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
                   Expanded(
                     child: Theme(
-                      data: theme.copyWith(
-                        canvasColor: Colors.transparent,
-                      ),
+                      data: theme.copyWith(canvasColor: Colors.transparent),
                       child: ReorderableListView.builder(
                         itemCount: currentOrder.length,
                         onReorder: (oldIndex, newIndex) {
@@ -5035,8 +7007,9 @@ class _SortingPageState extends State<SortingPage> {
                             key: ValueKey(step),
                             margin: const EdgeInsets.only(bottom: 12),
                             color: hasError
-                              ? Colors.red.shade900.withOpacity(0.5)
-                              : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                                ? Colors.red.shade900.withOpacity(0.5)
+                                : theme.colorScheme.surfaceContainerHighest
+                                      .withOpacity(0.5),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                               side: BorderSide(
@@ -5048,7 +7021,10 @@ class _SortingPageState extends State<SortingPage> {
                             ),
                             child: ListTile(
                               leading: CircleAvatar(
-                                backgroundColor: theme.colorScheme.primaryContainer.withOpacity(0.2),
+                                backgroundColor: theme
+                                    .colorScheme
+                                    .primaryContainer
+                                    .withOpacity(0.2),
                                 child: Text(
                                   '${index + 1}',
                                   style: TextStyle(
@@ -5059,9 +7035,15 @@ class _SortingPageState extends State<SortingPage> {
                               ),
                               title: Text(
                                 step,
-                                style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.onSurface,
+                                ),
                               ),
-                              trailing: Icon(Icons.drag_handle, color: theme.colorScheme.outline),
+                              trailing: Icon(
+                                Icons.drag_handle,
+                                color: theme.colorScheme.outline,
+                              ),
                             ),
                           );
                         },
@@ -5081,7 +7063,10 @@ class _SortingPageState extends State<SortingPage> {
                     ),
                     child: const Text(
                       'Verificar Orden',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],

@@ -34,6 +34,8 @@ class _SplashPageState extends State<SplashPage> {
           '/home',
           arguments: username,
         );
+      } else if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/login');
       }
     } else {
       if (mounted) {
