@@ -53,6 +53,7 @@ create table public.support_requests (
   subject text not null,
   message text not null,
   status text not null default 'Pendiente',
+  resolved_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -370,7 +371,7 @@ create policy profiles_update on public.profiles for update to authenticated
   with check (id = auth.uid() or public.is_admin());
 
 create policy private_select on public.profile_private for select to authenticated
-  using (id = auth.uid() or public.is_staff());
+  using (id = auth.uid());
 
 create policy spaces_select on public.discussion_spaces for select to authenticated using (true);
 create policy spaces_insert on public.discussion_spaces for insert to authenticated
@@ -439,11 +440,17 @@ begin
   if not found then
     raise exception 'No se encontró la PQRS.';
   end if;
+  if request_row.status = 'Resuelta' then
+    raise exception 'Esta PQRS ya está resuelta y no puede cambiar de estado.';
+  end if;
   if request_row.status = p_status then
     return;
   end if;
 
-  update public.support_requests set status = p_status where id = p_request_id;
+  update public.support_requests
+  set status = p_status,
+      resolved_at = case when p_status = 'Resuelta' then now() else null end
+  where id = p_request_id;
 
   if p_status = 'En revisión' then
     insert into public.messages (

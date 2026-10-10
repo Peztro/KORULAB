@@ -1,5 +1,6 @@
 ﻿import 'dart:async';
 import 'dart:typed_data';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1858,6 +1859,14 @@ class RewardShopPage extends StatefulWidget {
 }
 
 class _RewardShopPageState extends State<RewardShopPage> {
+  final _pageController = PageController(viewportFraction: 0.82);
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1888,7 +1897,7 @@ class _RewardShopPageState extends State<RewardShopPage> {
     final canAfford = progressStats.ekostrellas >= price;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 14),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1939,38 +1948,29 @@ class _RewardShopPageState extends State<RewardShopPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Tienda de recompensas'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
-      body: AnimatedBuilder(
-        animation: progressStats,
-        builder: (context, _) {
-          if (!progressStats.isCourseProgressLoaded) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(
-                '${progressStats.ekostrellas} ekostrellas',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primaryContainer,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Canjea tus estrellas por ayudas para las lecciones y tu racha.',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 20),
-              _buildProductCard(
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: theme.colorScheme.surface,
+        appBar: AppBar(
+          title: const Text('Tienda de recompensas'),
+          backgroundColor: theme.colorScheme.primary,
+          foregroundColor: theme.colorScheme.onPrimary,
+          bottom: const TabBar(
+            tabs: [
+              Tab(icon: Icon(Icons.storefront_outlined), text: 'Tienda'),
+              Tab(icon: Icon(Icons.inventory_2_outlined), text: 'Inventario'),
+            ],
+          ),
+        ),
+        body: AnimatedBuilder(
+          animation: progressStats,
+          builder: (context, _) {
+            if (!progressStats.isCourseProgressLoaded) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final products = <_ShopProduct>[
+              _ShopProduct(
                 icon: Icons.lightbulb_outline,
                 title: 'Pista para una pregunta',
                 description:
@@ -1980,7 +1980,7 @@ class _RewardShopPageState extends State<RewardShopPage> {
                 onPurchase: () =>
                     _showPurchaseResult(progressStats.buyHint(), 'Pista'),
               ),
-              _buildProductCard(
+              _ShopProduct(
                 icon: Icons.stars_outlined,
                 title: 'Doble de ekostrellas',
                 description:
@@ -1992,7 +1992,7 @@ class _RewardShopPageState extends State<RewardShopPage> {
                   'Doble de ekostrellas',
                 ),
               ),
-              _buildProductCard(
+              _ShopProduct(
                 icon: Icons.replay,
                 title: 'Segundo intento',
                 description:
@@ -2004,7 +2004,7 @@ class _RewardShopPageState extends State<RewardShopPage> {
                   'Segundo intento',
                 ),
               ),
-              _buildProductCard(
+              _ShopProduct(
                 icon: Icons.shield_outlined,
                 title: 'Protector de racha',
                 description:
@@ -2016,12 +2016,127 @@ class _RewardShopPageState extends State<RewardShopPage> {
                   'Protector de racha',
                 ),
               ),
-            ],
-          );
-        },
+            ];
+            return TabBarView(
+              children: [
+                _buildShopTab(theme, products),
+                _buildInventoryTab(theme, products),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
+
+  Widget _buildShopTab(ThemeData theme, List<_ShopProduct> products) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${progressStats.ekostrellas} ekostrellas',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primaryContainer,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Desliza para ver los productos y canjea tus estrellas por ayudas.',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          height: 330,
+          child: PageView.builder(
+            controller: _pageController,
+            itemBuilder: (context, index) {
+              final product = products[index % products.length];
+              return _buildProductCard(
+                icon: product.icon,
+                title: product.title,
+                description: product.description,
+                price: product.price,
+                owned: product.owned,
+                onPurchase: product.onPurchase,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInventoryTab(ThemeData theme, List<_ShopProduct> products) {
+    final owned = products.where((p) => p.owned > 0).toList();
+    if (owned.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Aún no tienes habilidades. Canjéalas en la tienda con tus ekostrellas.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (final product in owned)
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: theme.colorScheme.primary.withOpacity(0.18),
+                child: Icon(
+                  product.icon,
+                  color: theme.colorScheme.primaryContainer,
+                ),
+              ),
+              title: Text(
+                product.title,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(product.description),
+              trailing: Text(
+                '${product.owned}\n${product.owned == 1 ? 'unidad' : 'unidades'}',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.labelLarge,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ShopProduct {
+  final IconData icon;
+  final String title;
+  final String description;
+  final int price;
+  final int owned;
+  final VoidCallback onPurchase;
+
+  const _ShopProduct({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.price,
+    required this.owned,
+    required this.onPurchase,
+  });
 }
 
 class DiscussionReply {
@@ -2108,6 +2223,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   int _selectedIndex = 0;
+  DateTime? _lastBackPress;
   late String _currentUsername;
   String _displayName = '';
   String? _gender;
@@ -2570,7 +2686,7 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 12),
           SpecialActivityCard(
-            title: 'RETOS ECOLÓGICOS',
+            title: 'RETOS EKOLÓGICOS',
             subtitle: 'Pequeñas acciones para el día a día',
             icon: Icons.emoji_events,
             color: Colors.teal.shade600,
@@ -2578,6 +2694,19 @@ class _HomePageState extends State<HomePage> {
               context,
               MaterialPageRoute(
                 builder: (_) => EcoChallengesPage(username: _currentUsername),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SpecialActivityCard(
+            title: 'TIENDA',
+            subtitle: 'Canjea ekostrellas y revisa tu inventario',
+            icon: Icons.storefront,
+            color: Colors.orange.shade700,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => RewardShopPage(username: _currentUsername),
               ),
             ),
           ),
@@ -3232,6 +3361,31 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        final now = DateTime.now();
+        final last = _lastBackPress;
+        if (last != null && now.difference(last) < const Duration(seconds: 2)) {
+          SystemNavigator.pop();
+          return;
+        }
+        _lastBackPress = now;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Pulsa atrás otra vez para salir'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+      },
+      child: _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     final theme = Theme.of(context);
     final isAdmin = _role == DBService.roleAdmin;
     final isTeacher = _role == DBService.roleTeacher;
@@ -3315,9 +3469,8 @@ class _HomePageState extends State<HomePage> {
                                   ? Icon(
                                       Icons.person,
                                       size: 32,
-                                      color: theme
-                                          .colorScheme
-                                          .onPrimaryContainer,
+                                      color:
+                                          theme.colorScheme.onPrimaryContainer,
                                     )
                                   : null,
                             ),
@@ -3892,162 +4045,78 @@ class _EcoChallengesPageState extends State<EcoChallengesPage> {
         ),
       ];
 
-  late final String _progressKey = 'korulab_eco_challenges_${widget.username}';
-  final Set<String> _completed = {};
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadProgress();
-  }
-
-  Future<void> _loadProgress() async {
-    try {
-      final preferences = await SharedPreferences.getInstance();
-      final saved = preferences.getStringList(_progressKey) ?? [];
-      if (mounted) {
-        setState(() {
-          _completed.addAll(saved);
-        });
-      }
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _toggleChallenge(String id, bool? isCompleted) async {
-    setState(() {
-      if (isCompleted ?? false) {
-        _completed.add(id);
-      } else {
-        _completed.remove(id);
-      }
-    });
-
-    try {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.setStringList(_progressKey, _completed.toList());
-      unawaited(DBService.pushProgress(widget.username));
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo guardar el progreso.')),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final completedCount = _completed.length;
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Retos ecológicos'),
+        title: const Text('Retos ekológicos'),
         backgroundColor: theme.colorScheme.primary,
         foregroundColor: theme.colorScheme.onPrimary,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Text(
-                  'Un reto a tu ritmo',
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Pequeñas acciones cotidianas también ayudan a cuidar el planeta.',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Card(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '$completedCount de ${_challenges.length} acciones completadas',
-                        ),
-                        const SizedBox(height: 12),
-                        LinearProgressIndicator(
-                          value: completedCount / _challenges.length,
-                          minHeight: 8,
-                        ),
-                        if (completedCount == _challenges.length) ...[
-                          const SizedBox(height: 12),
-                          Text(
-                            '¡Reto completado! Gracias por ponerlo en práctica.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: theme.colorScheme.primaryContainer,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                ..._challenges.map((challenge) {
-                  final isCompleted = _completed.contains(challenge.id);
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    color: theme.colorScheme.surfaceContainerHighest
-                        .withOpacity(0.65),
-                    child: Column(
-                      children: [
-                        CheckboxListTile(
-                          value: isCompleted,
-                          onChanged: (value) =>
-                              _toggleChallenge(challenge.id, value),
-                          controlAffinity: ListTileControlAffinity.trailing,
-                          secondary: Icon(
-                            challenge.icon,
-                            color: theme.colorScheme.primaryContainer,
-                          ),
-                          title: Text(challenge.title),
-                          subtitle: Text(challenge.description),
-                        ),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 16, bottom: 8),
-                            child: TextButton.icon(
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => EcoChallengeJournalPage(
-                                      username: widget.username,
-                                      challengeId: challenge.id,
-                                      challengeTitle: challenge.title,
-                                    ),
-                                  ),
-                                );
-                              },
-                              icon: const Icon(Icons.menu_book_outlined),
-                              label: const Text('Abrir diario'),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-              ],
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            'Un reto a tu ritmo',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.onSurface,
             ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Pequeñas acciones cotidianas también ayudan a cuidar el planeta.',
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 20),
+          ..._challenges.map((challenge) {
+            return Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              color: theme.colorScheme.surfaceContainerHighest.withOpacity(
+                0.65,
+              ),
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: Icon(
+                      challenge.icon,
+                      color: theme.colorScheme.primaryContainer,
+                    ),
+                    title: Text(challenge.title),
+                    subtitle: Text(challenge.description),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 16, bottom: 8),
+                      child: TextButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => EcoChallengeJournalPage(
+                                username: widget.username,
+                                challengeId: challenge.id,
+                                challengeTitle: challenge.title,
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.menu_book_outlined),
+                        label: const Text('Abrir diario'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }
@@ -4741,6 +4810,25 @@ class _TeacherLessonCard extends StatelessWidget {
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: LinearProgressIndicator(
+                      value: isCompleted ? 1 : 0,
+                      minHeight: 6,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    isCompleted ? '100%' : '0%',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               Row(

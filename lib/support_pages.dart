@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'db_service.dart';
 import 'main.dart' show describeActivityId;
@@ -440,26 +442,48 @@ class _SupportReviewPageState extends State<SupportReviewPage> {
   bool _isLoading = true;
   String? _error;
 
+  RealtimeChannel? _channel;
+
   @override
   void initState() {
     super.initState();
     _loadRequests();
+    _channel = Supabase.instance.client
+        .channel('support-review-${widget.adminUsername}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: DBService.supportRequestTable,
+          callback: (_) => _loadRequests(silent: true),
+        )
+        .subscribe();
   }
 
-  Future<void> _loadRequests() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    final channel = _channel;
+    if (channel != null) Supabase.instance.client.removeChannel(channel);
+    super.dispose();
+  }
+
+  Future<void> _loadRequests({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
     try {
       final requests = await DBService.getSupportRequests(widget.adminUsername);
       if (!mounted) return;
       setState(() {
         _requests = List.of(requests);
         _isLoading = false;
+        _error = null;
       });
     } catch (_) {
       if (!mounted) return;
+      if (silent) return;
       setState(() {
         _error = 'No se pudieron cargar las PQRS de esta cuenta.';
         _isLoading = false;
@@ -495,7 +519,42 @@ class _SupportReviewPageState extends State<SupportReviewPage> {
           duration: const Duration(seconds: 8),
         ),
       );
+      unawaited(_loadRequests(silent: true));
     }
+  }
+
+  void _showDetails(Map<String, dynamic> request) {
+    final solution = (request['resolution'] as String?)?.trim();
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Solución dada'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Cerrada el ${_formatClosedDate(request['resolved_at'])}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                solution == null || solution.isEmpty
+                    ? 'No se registró la solución de esta PQRS.'
+                    : solution,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<String?> _askResolutionMessage() {
@@ -508,95 +567,153 @@ class _SupportReviewPageState extends State<SupportReviewPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Revisión de PQRS'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-        actions: [
-          IconButton(
-            tooltip: 'Actualizar',
-            onPressed: _isLoading ? null : _loadRequests,
-            icon: const Icon(Icons.refresh),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: theme.colorScheme.surface,
+        appBar: AppBar(
+          title: const Text('Revisión de PQRS'),
+          backgroundColor: theme.colorScheme.primary,
+          foregroundColor: theme.colorScheme.onPrimary,
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Activas'),
+              Tab(text: 'PQRS pasadas'),
+            ],
           ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(child: Text(_error!))
-          : _requests.isEmpty
-          ? const Center(child: Text('Todavía no hay PQRS recibidas.'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _requests.length,
-              itemBuilder: (context, index) {
-                final request = _requests[index];
-                final id = request['id'] as int;
-                final status = request['status'] as String;
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 14),
-                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(
-                    0.65,
+          actions: [
+            IconButton(
+              tooltip: 'Actualizar',
+              onPressed: _isLoading ? null : _loadRequests,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+            ? Center(child: Text(_error!))
+            : TabBarView(
+                children: [
+                  _buildList(
+                    theme,
+                    _requests.where((r) => r['status'] != 'Resuelta').toList(),
+                    false,
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          request['subject'] as String,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text('${request['category']} · $status'),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${request['display_name']} · @${request['author_handle']}',
+                  _buildList(
+                    theme,
+                    _requests.where((r) => r['status'] == 'Resuelta').toList(),
+                    true,
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  String _formatClosedDate(dynamic value) {
+    final date = value is String ? DateTime.tryParse(value) : null;
+    if (date == null) return 'Fecha no registrada';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(date.day)}/${two(date.month)}/${date.year} '
+        '${two(date.hour)}:${two(date.minute)}';
+  }
+
+  Widget _buildList(
+    ThemeData theme,
+    List<Map<String, dynamic>> requests,
+    bool past,
+  ) {
+    if (requests.isEmpty) {
+      return Center(
+        child: Text(past ? 'Aún no hay PQRS pasadas.' : 'No hay PQRS activas.'),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: requests.length,
+      itemBuilder: (context, index) {
+        final request = requests[index];
+        final id = request['id'] as int;
+        final status = request['status'] as String;
+        return Card(
+          margin: const EdgeInsets.only(bottom: 14),
+          color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  request['subject'] as String,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text('${request['category']} · $status'),
+                const SizedBox(height: 8),
+                Text(
+                  '${request['display_name']} · @${request['author_handle']}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(request['message'] as String),
+                const SizedBox(height: 12),
+                if (past)
+                  Row(
+                    children: [
+                      const Icon(Icons.lock_outline, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Cerrada el ${_formatClosedDate(request['resolved_at'])}',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        Text(request['email'] as String),
-                        const SizedBox(height: 12),
-                        Text(request['message'] as String),
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          key: ValueKey('support-status-$id-$status'),
-                          initialValue: status,
-                          decoration: const InputDecoration(
-                            labelText: 'Estado',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'Pendiente',
-                              child: Text('Pendiente'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'En revisión',
-                              child: Text('En revisión'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Resuelta',
-                              child: Text('Resuelta'),
-                            ),
-                          ],
-                          onChanged: (value) {
-                            if (value != null && value != status) {
-                              _updateStatus(id, value);
-                            }
-                          },
-                        ),
-                      ],
+                      ),
+                      TextButton(
+                        onPressed: () => _showDetails(request),
+                        child: const Text('Detalles'),
+                      ),
+                    ],
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('support-status-$id-$status'),
+                    initialValue: status,
+                    decoration: const InputDecoration(
+                      labelText: 'Estado',
+                      border: OutlineInputBorder(),
                     ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'Pendiente',
+                        child: Text('Pendiente'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'En revisión',
+                        child: Text('En revisión'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Resuelta',
+                        child: Text('Resuelta'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null && value != status) {
+                        _updateStatus(id, value);
+                      }
+                    },
                   ),
-                );
-              },
+              ],
             ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1138,7 +1255,7 @@ class _RoleManagementPageState extends State<RoleManagementPage> {
                           ? '@$username'
                           : displayName,
                     ),
-                    subtitle: Text('@$username · ${user['email']}'),
+                    subtitle: Text('@$username'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

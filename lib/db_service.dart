@@ -69,6 +69,9 @@ class DBService {
     if (copy['created_at'] != null) {
       copy['created_at'] = _localTimestamp(copy['created_at']);
     }
+    if (copy['resolved_at'] != null) {
+      copy['resolved_at'] = _localTimestamp(copy['resolved_at']);
+    }
     return copy;
   }
 
@@ -256,7 +259,7 @@ class DBService {
     final rows = _rows(
       await _db
           .from(userTable)
-          .select('username, display_name, role, profile_private(email)')
+          .select('username, display_name, role')
           .order('username'),
     );
     final users = rows.map(_profileRow).toList();
@@ -435,7 +438,7 @@ class DBService {
           .from(userTable)
           .select(
             'username, display_name, age, birth_year, location, occupation, '
-            'bio, learning_goal, profile_photo, role, profile_private(email)',
+            'bio, learning_goal, profile_photo, role',
           )
           .eq('role', roleStudent),
     ).map(_profileRow).toList();
@@ -1040,7 +1043,7 @@ class DBService {
       for (final p in _rows(
         await _db
             .from('public_profiles')
-            .select('username, profile_photo, role')
+            .select('username, display_name, profile_photo, role')
             .inFilter('username', handles.toList()),
       )) {
         profiles[p['username'] as String] = p;
@@ -1053,6 +1056,8 @@ class DBService {
       final isSystem = handle == koruColUsername || handle == adminUsername;
       return {
         ..._withLocalDate(row),
+        if ((profile?['display_name'] as String?)?.trim().isNotEmpty ?? false)
+          'author': (profile!['display_name'] as String).trim(),
         'author_photo': _decodePhoto(profile?['profile_photo']),
         'author_role': profile?['role'] ?? (isSystem ? roleAdmin : roleStudent),
       };

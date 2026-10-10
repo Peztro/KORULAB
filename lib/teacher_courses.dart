@@ -214,6 +214,12 @@ class TeacherCourseCard extends StatelessWidget {
     final isCompleted =
         course.activities.isNotEmpty &&
         course.activities.every(progressStats.isActivityCompleted);
+    final doneCount = course.activities
+        .where(progressStats.isActivityCompleted)
+        .length;
+    final percent = course.activities.isEmpty
+        ? 0
+        : (doneCount * 100 / course.activities.length).round();
     final nodeColor = isCompleted || isUnlocked
         ? theme.colorScheme.primary
         : theme.colorScheme.outlineVariant;
@@ -253,6 +259,25 @@ class TeacherCourseCard extends StatelessWidget {
               Text(
                 '${course.activities.length} actividades · '
                 '${row['teacher_name'] ?? 'Profesor'}',
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: LinearProgressIndicator(
+                      value: percent / 100,
+                      minHeight: 6,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$percent%',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
