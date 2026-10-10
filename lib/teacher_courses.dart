@@ -3,7 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import 'db_service.dart';
-import 'main.dart';
+import 'data/course_catalog.dart';
+import 'models/course_models.dart';
+import 'pages/course_page.dart';
+import 'services/progress_stats.dart';
 
 const _typeLabels = {
   'quiz': 'Quiz de opción múltiple',
