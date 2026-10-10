@@ -87,6 +87,7 @@ class DBService {
       row['email'] = (private.first as Map)['email'];
     }
     row['profile_photo'] = _decodePhoto(row['profile_photo']);
+    row['banner'] = _decodePhoto(row['banner']);
     row['is_admin'] = row['role'] == roleAdmin ? 1 : 0;
     if (row['created_at'] != null) {
       row['created_at'] = _localTimestamp(row['created_at']);
@@ -204,6 +205,8 @@ class DBService {
     required String occupation,
     required String bio,
     required String learningGoal,
+    String? gender,
+    required Uint8List? banner,
     required Uint8List? profilePhoto,
   }) async {
     final oldUsername = normalizeUsername(username);
@@ -233,6 +236,8 @@ class DBService {
           'occupation': occupation,
           'bio': bio,
           'learning_goal': learningGoal,
+          'gender': gender,
+          'banner': banner == null ? null : base64Encode(banner),
           'profile_photo': profilePhoto == null
               ? null
               : base64Encode(profilePhoto),
@@ -473,6 +478,64 @@ class DBService {
         'accuracy_percent': total == 0 ? 0 : correct * 100 ~/ total,
       };
     }).toList();
+  }
+
+  /// Perfil visible para cualquier usuario; devuelve null si no existe.
+  static Future<Map<String, dynamic>?> getPublicProfile(String username) async {
+    final data = await _db.rpc(
+      'get_public_profile',
+      params: {'p_username': normalizeUsername(username)},
+    );
+    if (data is! Map) return null;
+    final profile = Map<String, dynamic>.from(data);
+    profile['profile_photo'] = _decodePhoto(profile['profile_photo']);
+    profile['banner'] = _decodePhoto(profile['banner']);
+    return _withLocalDate(profile);
+  }
+
+  /// Publicaciones y respuestas de un usuario, legibles por todos.
+  static Future<Map<String, List<Map<String, dynamic>>>> getPublicActivity(
+    String username,
+  ) async {
+    final handle = normalizeUsername(username);
+    final posts = _rows(
+      await _db
+          .from(discussionTable)
+          .select('id, title, description, created_at')
+          .eq('author_handle', handle)
+          .order('created_at', ascending: false)
+          .limit(30),
+    ).map(_withLocalDate).toList();
+    final replies = _rows(
+      await _db
+          .from(replyTable)
+          .select('id, message, created_at, discussion_id')
+          .eq('author_handle', handle)
+          .order('created_at', ascending: false)
+          .limit(30),
+    );
+    final titles = <int, String>{};
+    final ids = {for (final r in replies) r['discussion_id'] as int};
+    if (ids.isNotEmpty) {
+      for (final row in _rows(
+        await _db
+            .from(discussionTable)
+            .select('id, title')
+            .inFilter('id', ids.toList()),
+      )) {
+        titles[row['id'] as int] = row['title'] as String;
+      }
+    }
+    return {
+      'posts': posts,
+      'replies': [
+        for (final reply in replies)
+          {
+            ..._withLocalDate(reply),
+            'discussion_title': titles[reply['discussion_id'] as int],
+          },
+      ],
+    };
   }
 
   static Future<Map<String, List<Map<String, dynamic>>>>

@@ -10,6 +10,7 @@ import 'notification_service.dart';
 import 'register_page.dart';
 import 'splash_page.dart';
 import 'profile_page.dart';
+import 'public_profile_page.dart';
 import 'support_pages.dart';
 import 'teacher_courses.dart';
 
@@ -2070,6 +2071,26 @@ class DiscussionSpace {
        replies = replies ?? [];
 }
 
+// Abre el perfil público de un autor de Korublog al tocar su foto.
+void openPublicProfile(
+  BuildContext context, {
+  required String handle,
+  required String name,
+  Uint8List? photo,
+}) {
+  if (handle.isEmpty) return;
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => PublicProfilePage(
+        username: handle,
+        fallbackName: name,
+        fallbackPhoto: photo,
+      ),
+    ),
+  );
+}
+
 // ─────────────────────────────────────────────
 //  PÁGINAS PRINCIPALES
 // ─────────────────────────────────────────────
@@ -2089,10 +2110,12 @@ class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
   late String _currentUsername;
   String _displayName = '';
+  String? _gender;
   String _userRole = DBService.roleStudent;
   bool _isAdmin = false;
   bool _isTeacher = false;
   Uint8List? _profilePhoto;
+  Uint8List? _banner;
   final List<DiscussionSpace> _discussionSpaces = [
     DiscussionSpace(
       title: 'Ideas para cuidar el planeta',
@@ -2158,10 +2181,12 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
     setState(() {
       _profilePhoto = profile?['profile_photo'] as Uint8List?;
+      _banner = profile?['banner'] as Uint8List?;
       _currentUsername = DBService.normalizeUsername(
         profile?['username'] as String? ?? _currentUsername,
       );
       _displayName = profile?['display_name'] as String? ?? '';
+      _gender = profile?['gender'] as String?;
       final role = profile?['role'] as String? ?? DBService.roleStudent;
       _userRole = role;
       _role = role;
@@ -2173,6 +2198,12 @@ class _HomePageState extends State<HomePage> {
       _isTeacher = role == DBService.roleTeacher;
     });
   }
+
+  String get _greeting => switch (_gender) {
+    'female' => 'Bienvenida',
+    'male' => 'Bienvenido',
+    _ => 'Bienvenidx',
+  };
 
   String get _currentDisplayName =>
       _displayName.trim().isEmpty ? _currentUsername : _displayName.trim();
@@ -2451,6 +2482,7 @@ class _HomePageState extends State<HomePage> {
       _currentUsername = username;
       _profilePhoto = photo;
     });
+    unawaited(_loadProfilePhoto());
     unawaited(progressStats.loadCourseProgress(username));
     unawaited(
       DBService.rememberCurrentAccount(
@@ -2470,7 +2502,7 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Bienvenido, $_currentDisplayName',
+            '$_greeting, $_currentDisplayName',
             style: theme.textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.bold,
               color: theme.colorScheme.onSurface,
@@ -2586,7 +2618,7 @@ class _HomePageState extends State<HomePage> {
       padding: const EdgeInsets.all(16),
       children: [
         Text(
-          'Panel docente',
+          'Bienvenido docente, $_currentDisplayName',
           style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.bold,
             color: theme.colorScheme.onSurface,
@@ -2946,14 +2978,22 @@ class _HomePageState extends State<HomePage> {
           horizontal: 18,
           vertical: 14,
         ),
-        leading: CircleAvatar(
-          backgroundImage: space.authorPhoto == null
-              ? null
-              : MemoryImage(space.authorPhoto!),
-          backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
-          child: space.authorPhoto == null
-              ? Icon(Icons.forum, color: theme.colorScheme.primaryContainer)
-              : null,
+        leading: GestureDetector(
+          onTap: () => openPublicProfile(
+            context,
+            handle: space.authorHandle,
+            name: space.author,
+            photo: space.authorPhoto,
+          ),
+          child: CircleAvatar(
+            backgroundImage: space.authorPhoto == null
+                ? null
+                : MemoryImage(space.authorPhoto!),
+            backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
+            child: space.authorPhoto == null
+                ? Icon(Icons.forum, color: theme.colorScheme.primaryContainer)
+                : null,
+          ),
         ),
         title: Text(
           '${space.isPinned ? '📌 ' : ''}${space.title}',
@@ -3238,7 +3278,19 @@ class _HomePageState extends State<HomePage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               DrawerHeader(
-                decoration: BoxDecoration(color: theme.colorScheme.primary),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  image: _banner == null
+                      ? null
+                      : DecorationImage(
+                          image: MemoryImage(_banner!),
+                          fit: BoxFit.cover,
+                          colorFilter: const ColorFilter.mode(
+                            Colors.black45,
+                            BlendMode.darken,
+                          ),
+                        ),
+                ),
                 child: Row(
                   children: [
                     InkWell(
@@ -3247,19 +3299,50 @@ class _HomePageState extends State<HomePage> {
                         Navigator.pop(context);
                         _openProfilePage();
                       },
-                      child: CircleAvatar(
-                        radius: 32,
-                        backgroundColor: theme.colorScheme.primaryContainer,
-                        backgroundImage: _profilePhoto == null
-                            ? null
-                            : MemoryImage(_profilePhoto!),
-                        child: _profilePhoto == null
-                            ? Icon(
-                                Icons.person,
-                                size: 32,
-                                color: theme.colorScheme.onPrimaryContainer,
-                              )
-                            : null,
+                      child: Tooltip(
+                        message: 'Editar perfil',
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            CircleAvatar(
+                              radius: 32,
+                              backgroundColor:
+                                  theme.colorScheme.primaryContainer,
+                              backgroundImage: _profilePhoto == null
+                                  ? null
+                                  : MemoryImage(_profilePhoto!),
+                              child: _profilePhoto == null
+                                  ? Icon(
+                                      Icons.person,
+                                      size: 32,
+                                      color: theme
+                                          .colorScheme
+                                          .onPrimaryContainer,
+                                    )
+                                  : null,
+                            ),
+                            Positioned(
+                              right: -2,
+                              bottom: -2,
+                              child: Container(
+                                padding: const EdgeInsets.all(5),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surface,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: theme.colorScheme.primary,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.edit,
+                                  size: 13,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -5451,18 +5534,26 @@ class _DiscussionPageState extends State<DiscussionPage> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    CircleAvatar(
-                      radius: 20,
-                      backgroundColor: theme.colorScheme.primaryContainer,
-                      backgroundImage: widget.space.authorPhoto == null
-                          ? null
-                          : MemoryImage(widget.space.authorPhoto!),
-                      child: widget.space.authorPhoto == null
-                          ? Icon(
-                              Icons.person,
-                              color: theme.colorScheme.onPrimaryContainer,
-                            )
-                          : null,
+                    GestureDetector(
+                      onTap: () => openPublicProfile(
+                        context,
+                        handle: widget.space.authorHandle,
+                        name: widget.space.author,
+                        photo: widget.space.authorPhoto,
+                      ),
+                      child: CircleAvatar(
+                        radius: 20,
+                        backgroundColor: theme.colorScheme.primaryContainer,
+                        backgroundImage: widget.space.authorPhoto == null
+                            ? null
+                            : MemoryImage(widget.space.authorPhoto!),
+                        child: widget.space.authorPhoto == null
+                            ? Icon(
+                                Icons.person,
+                                color: theme.colorScheme.onPrimaryContainer,
+                              )
+                            : null,
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -5518,18 +5609,26 @@ class _DiscussionPageState extends State<DiscussionPage> {
                       color: theme.colorScheme.surfaceContainerHighest
                           .withOpacity(0.65),
                       child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundImage: reply.authorPhoto == null
-                              ? null
-                              : MemoryImage(reply.authorPhoto!),
-                          backgroundColor: theme.colorScheme.primary
-                              .withOpacity(0.2),
-                          child: reply.authorPhoto == null
-                              ? Icon(
-                                  Icons.person,
-                                  color: theme.colorScheme.primaryContainer,
-                                )
-                              : null,
+                        leading: GestureDetector(
+                          onTap: () => openPublicProfile(
+                            context,
+                            handle: reply.authorHandle,
+                            name: reply.author,
+                            photo: reply.authorPhoto,
+                          ),
+                          child: CircleAvatar(
+                            backgroundImage: reply.authorPhoto == null
+                                ? null
+                                : MemoryImage(reply.authorPhoto!),
+                            backgroundColor: theme.colorScheme.primary
+                                .withOpacity(0.2),
+                            child: reply.authorPhoto == null
+                                ? Icon(
+                                    Icons.person,
+                                    color: theme.colorScheme.primaryContainer,
+                                  )
+                                : null,
+                          ),
                         ),
                         title: Text(
                           reply.author,
