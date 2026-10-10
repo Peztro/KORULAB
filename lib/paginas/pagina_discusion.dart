@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import '../db_service.dart';
-import '../models/course_models.dart';
-import '../models/discussion_models.dart';
+import '../servicio_bd.dart';
+import '../modelos/modelos_curso.dart';
+import '../modelos/modelos_discusion.dart';
 
 class DiscussionPage extends StatefulWidget {
   final DiscussionSpace space;

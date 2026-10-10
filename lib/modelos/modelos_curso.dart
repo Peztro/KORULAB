@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../data/course_catalog.dart';
+import '../datos/catalogo_cursos.dart';
 
 // Convierte un id de progreso ("curso:actividad") en un nombre legible.
 String describeActivityId(String id) {

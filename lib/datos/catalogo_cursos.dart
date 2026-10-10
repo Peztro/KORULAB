@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/course_models.dart';
+import '../modelos/modelos_curso.dart';
 
 // ─────────────────────────────────────────────
 //  COURSE DATA

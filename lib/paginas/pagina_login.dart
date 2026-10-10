@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../db_service.dart';
-import '../pages/home_page.dart';
-import '../register_page.dart';
+import '../servicio_bd.dart';
+import '../paginas/pagina_inicio.dart';
+import '../pagina_registro.dart';
 
 // ─────────────────────────────────────────────
 // Página de inicio de sesión - permite a los usuarios autenticarse con usuario y contraseña

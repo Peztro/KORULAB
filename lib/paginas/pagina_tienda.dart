@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/progress_stats.dart';
+import '../servicios/estadisticas_progreso.dart';
 
 class RewardShopPage extends StatefulWidget {
   static const int hintPrice = 25;

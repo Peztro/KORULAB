@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import 'db_service.dart';
+import 'servicio_bd.dart';
 
 /// Perfil público estilo red social, visible desde Korublog para cualquier rol.
 class PublicProfilePage extends StatefulWidget {

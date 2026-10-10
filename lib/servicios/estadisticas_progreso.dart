@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../data/course_catalog.dart';
-import '../db_service.dart';
-import '../models/course_models.dart';
-import '../pages/reward_shop_page.dart';
+import '../datos/catalogo_cursos.dart';
+import '../servicio_bd.dart';
+import '../modelos/modelos_curso.dart';
+import '../paginas/pagina_tienda.dart';
 
 // Gestor de estadísticas del usuario - rastrear respuestas correctas, lecciones completadas, racha diaria y ekostrellas
 class ProgressStats extends ChangeNotifier {

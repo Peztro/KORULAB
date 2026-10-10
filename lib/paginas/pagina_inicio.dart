@@ -2,21 +2,21 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../db_service.dart';
-import '../models/discussion_models.dart';
-import '../notification_service.dart';
-import '../pages/discussion_page.dart';
-import '../pages/eco_challenges_page.dart';
-import '../pages/login_page.dart';
-import '../pages/reward_shop_page.dart';
-import '../pages/ruta_eko_page.dart';
-import '../profile_page.dart';
-import '../services/progress_stats.dart';
-import '../support_pages.dart';
-import '../widgets/account_switcher_sheet.dart';
-import '../teacher_courses.dart';
-import '../widgets/home_cards.dart';
-import '../widgets/progress_card.dart';
+import '../servicio_bd.dart';
+import '../modelos/modelos_discusion.dart';
+import '../servicio_notificaciones.dart';
+import '../paginas/pagina_discusion.dart';
+import '../paginas/pagina_retos_ecologicos.dart';
+import '../paginas/pagina_login.dart';
+import '../paginas/pagina_tienda.dart';
+import '../paginas/pagina_ruta_eko.dart';
+import '../pagina_perfil.dart';
+import '../servicios/estadisticas_progreso.dart';
+import '../paginas_soporte.dart';
+import '../widgets/selector_cuentas.dart';
+import '../cursos_docentes.dart';
+import '../widgets/tarjetas_inicio.dart';
+import '../widgets/tarjeta_progreso.dart';
 
 // Página principal del usuario - muestra lecciones, actividades especiales y progreso
 class HomePage extends StatefulWidget {

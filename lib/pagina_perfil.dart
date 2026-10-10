@@ -4,7 +4,7 @@ import 'package:crop_your_image/crop_your_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import 'db_service.dart';
+import 'servicio_bd.dart';
 
 class ProfilePage extends StatefulWidget {
   final String username;

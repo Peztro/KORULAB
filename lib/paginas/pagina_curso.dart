@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import '../models/course_models.dart';
-import '../pages/fill_blank_page.dart';
-import '../pages/matching_page.dart';
-import '../pages/memory_page.dart';
-import '../pages/quiz_page.dart';
-import '../pages/sorting_page.dart';
-import '../services/progress_stats.dart';
+import '../modelos/modelos_curso.dart';
+import '../paginas/pagina_completar.dart';
+import '../paginas/pagina_relacionar.dart';
+import '../paginas/pagina_memoria.dart';
+import '../paginas/pagina_quiz.dart';
+import '../paginas/pagina_ordenar.dart';
+import '../servicios/estadisticas_progreso.dart';
 
 String _activityLabel(ActivityType t) {
   switch (t) {

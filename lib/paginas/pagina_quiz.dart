@@ -1,48 +1,66 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../feedback_service.dart';
-import '../models/course_models.dart';
-import '../pages/course_page.dart';
-import '../services/progress_stats.dart';
+import '../servicio_comentarios.dart';
+import '../modelos/modelos_curso.dart';
+import '../paginas/pagina_curso.dart';
+import '../servicios/estadisticas_progreso.dart';
 
 // ─────────────────────────────────────────────
-//  4. FILL IN THE BLANK PAGE
+//  1. QUIZ PAGE
 // ─────────────────────────────────────────────
-class FillBlankPage extends StatefulWidget {
-  final FillBlankActivity activity;
-  const FillBlankPage({super.key, required this.activity});
+class QuizPage extends StatefulWidget {
+  final QuizActivity activity;
+  const QuizPage({super.key, required this.activity});
 
   @override
-  State<FillBlankPage> createState() => _FillBlankPageState();
+  State<QuizPage> createState() => _QuizPageState();
 }
 
-class _FillBlankPageState extends State<FillBlankPage> {
-  int currentQuestionIndex = 0;
+class _QuizPageState extends State<QuizPage> {
+  int questionIndex = 0;
   int score = 0;
   int incorrectAttempts = 0;
-  int? selectedOptionIndex;
+  int? selectedOption;
   int? _hintedOptionIndex;
   bool completed = false;
   bool _reportedCompletion = false;
+  late List<Question> shuffledQuestions;
+
+  @override
+  void initState() {
+    super.initState();
+    shuffledQuestions = List.from(widget.activity.questions)..shuffle();
+  }
 
   void _reset() {
     setState(() {
-      currentQuestionIndex = 0;
+      completed = false;
+      questionIndex = 0;
+      selectedOption = null;
+      _hintedOptionIndex = null;
       score = 0;
       incorrectAttempts = 0;
-      selectedOptionIndex = null;
-      _hintedOptionIndex = null;
-      completed = false;
       _reportedCompletion = false;
+      shuffledQuestions = List.from(widget.activity.questions)..shuffle();
     });
   }
 
-  void _selectOption(int index) {
-    if (selectedOptionIndex != null) return;
+  void _reportCompletion() {
+    if (_reportedCompletion) return;
+    _reportedCompletion = true;
+    progressStats.reportLessonResult(
+      score,
+      shuffledQuestions.length,
+      activity: widget.activity,
+      incorrectAttempts: incorrectAttempts,
+    );
+  }
+
+  void selectOption(int index) {
+    if (selectedOption != null) return;
     setState(() {
-      selectedOptionIndex = index;
-      if (widget.activity.questions[currentQuestionIndex].answerIndex ==
-          index) {
+      selectedOption = index;
+      if (shuffledQuestions[questionIndex].answerIndex == index) {
         score++;
       } else {
         incorrectAttempts++;
@@ -52,8 +70,8 @@ class _FillBlankPageState extends State<FillBlankPage> {
   }
 
   void _useHint() {
-    if (selectedOptionIndex != null || _hintedOptionIndex != null) return;
-    final question = widget.activity.questions[currentQuestionIndex];
+    if (selectedOption != null || _hintedOptionIndex != null) return;
+    final question = shuffledQuestions[questionIndex];
     final wrongOptions = [
       for (var index = 0; index < question.options.length; index++)
         if (index != question.answerIndex) index,
@@ -64,36 +82,27 @@ class _FillBlankPageState extends State<FillBlankPage> {
   }
 
   void _useSecondChance() {
-    if (selectedOptionIndex == null ||
-        widget.activity.questions[currentQuestionIndex].answerIndex ==
-            selectedOptionIndex) {
+    if (selectedOption == null ||
+        shuffledQuestions[questionIndex].answerIndex == selectedOption) {
       return;
     }
     if (!progressStats.useSecondChance()) return;
-    setState(() => selectedOptionIndex = null);
+    setState(() => selectedOption = null);
   }
 
-  void _nextQuestion() {
-    if (currentQuestionIndex + 1 >= widget.activity.questions.length) {
+  void nextQuestion() {
+    if (questionIndex + 1 >= shuffledQuestions.length) {
       setState(() {
         completed = true;
       });
-      if (!_reportedCompletion) {
-        _reportedCompletion = true;
-        progressStats.reportLessonResult(
-          score,
-          widget.activity.questions.length,
-          activity: widget.activity,
-          incorrectAttempts: incorrectAttempts,
-        );
-      }
-    } else {
-      setState(() {
-        currentQuestionIndex++;
-        selectedOptionIndex = null;
-        _hintedOptionIndex = null;
-      });
+      _reportCompletion();
+      return;
     }
+    setState(() {
+      questionIndex++;
+      selectedOption = null;
+      _hintedOptionIndex = null;
+    });
   }
 
   @override
@@ -111,101 +120,47 @@ class _FillBlankPageState extends State<FillBlankPage> {
         child: completed
             ? ResultScreen(
                 score: score,
-                total: widget.activity.questions.length,
+                total: shuffledQuestions.length,
                 incorrectAttempts: incorrectAttempts,
                 onRetry: _reset,
                 activityName: widget.activity.title,
               )
-            : _buildBody(),
+            : _buildQuestion(),
       ),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildQuestion() {
     final theme = Theme.of(context);
-    final q = widget.activity.questions[currentQuestionIndex];
-    final sentenceParts = q.sentence.split('___');
-    final String part1 = sentenceParts.isNotEmpty ? sentenceParts[0] : '';
-    final String part2 = sentenceParts.length > 1 ? sentenceParts[1] : '';
-
+    final question = shuffledQuestions[questionIndex];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         LinearProgressIndicator(
-          value: (currentQuestionIndex + 1) / widget.activity.questions.length,
+          value: (questionIndex + 1) / shuffledQuestions.length,
           backgroundColor: theme.colorScheme.outlineVariant,
           color: theme.colorScheme.primaryContainer,
         ),
         const SizedBox(height: 12),
         Text(
-          'Pregunta ${currentQuestionIndex + 1} de ${widget.activity.questions.length}',
+          'Pregunta ${questionIndex + 1} de ${shuffledQuestions.length}',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
-        const SizedBox(height: 24),
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: theme.colorScheme.outlineVariant.withOpacity(0.5),
-            ),
-          ),
-          child: RichText(
-            textAlign: TextAlign.center,
-            text: TextSpan(
-              style: theme.textTheme.titleLarge?.copyWith(
-                height: 1.6,
-                color: theme.colorScheme.onSurface,
-              ),
-              children: [
-                TextSpan(text: part1),
-                WidgetSpan(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    margin: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: selectedOptionIndex == null
-                          ? theme.colorScheme.surfaceContainerHighest
-                          : (q.answerIndex == selectedOptionIndex
-                                ? Colors.green.shade800
-                                : Colors.red.shade800),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: selectedOptionIndex == null
-                            ? theme.colorScheme.outline
-                            : (q.answerIndex == selectedOptionIndex
-                                  ? Colors.green.shade400
-                                  : Colors.red.shade400),
-                        width: 2,
-                      ),
-                    ),
-                    child: Text(
-                      selectedOptionIndex == null
-                          ? ' ____ '
-                          : q.options[selectedOptionIndex!],
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurface,
-                      ),
-                    ),
-                  ),
-                ),
-                TextSpan(text: part2),
-              ],
-            ),
+        const SizedBox(height: 16),
+        Text(
+          question.prompt,
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onSurface,
           ),
         ),
         Align(
           alignment: Alignment.centerRight,
           child:
-              selectedOptionIndex != null &&
-                  q.answerIndex != selectedOptionIndex &&
+              selectedOption != null &&
+                  question.answerIndex != selectedOption &&
                   progressStats.secondChances > 0
               ? TextButton.icon(
                   onPressed: _useSecondChance,
@@ -216,7 +171,7 @@ class _FillBlankPageState extends State<FillBlankPage> {
                 )
               : TextButton.icon(
                   onPressed:
-                      selectedOptionIndex != null ||
+                      selectedOption != null ||
                           _hintedOptionIndex != null ||
                           progressStats.hintCredits == 0
                       ? null
@@ -225,15 +180,15 @@ class _FillBlankPageState extends State<FillBlankPage> {
                   label: Text('Pista (${progressStats.hintCredits})'),
                 ),
         ),
-        const SizedBox(height: 40),
-        ...List.generate(q.options.length, (index) {
-          final option = q.options[index];
-          final isSelected = selectedOptionIndex == index;
-          final isCorrect = q.answerIndex == index;
+        const SizedBox(height: 24),
+        ...List.generate(question.options.length, (index) {
+          final option = question.options[index];
+          final isSelected = selectedOption == index;
+          final isCorrect = question.answerIndex == index;
           final isEliminated = _hintedOptionIndex == index;
           Color? cardColor;
           Color? textColor;
-          if (selectedOptionIndex != null) {
+          if (selectedOption != null) {
             if (isSelected && isCorrect) {
               cardColor = Colors.green.shade800;
               textColor = Colors.white;
@@ -269,7 +224,7 @@ class _FillBlankPageState extends State<FillBlankPage> {
                   ),
                 ),
               ),
-              onPressed: isEliminated ? null : () => _selectOption(index),
+              onPressed: isEliminated ? null : () => selectOption(index),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
@@ -286,9 +241,9 @@ class _FillBlankPageState extends State<FillBlankPage> {
             backgroundColor: theme.colorScheme.primaryContainer,
             foregroundColor: theme.colorScheme.onPrimaryContainer,
           ),
-          onPressed: selectedOptionIndex == null ? null : _nextQuestion,
+          onPressed: selectedOption == null ? null : nextQuestion,
           child: Text(
-            currentQuestionIndex + 1 == widget.activity.questions.length
+            questionIndex + 1 == shuffledQuestions.length
                 ? 'Finalizar'
                 : 'Siguiente',
           ),

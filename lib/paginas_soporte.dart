@@ -4,9 +4,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'db_service.dart';
-import 'models/course_models.dart';
-import 'teacher_courses.dart' show decodeActivities;
+import 'servicio_bd.dart';
+import 'modelos/modelos_curso.dart';
+import 'cursos_docentes.dart' show decodeActivities;
 
 class SettingsPage extends StatefulWidget {
   final String username;

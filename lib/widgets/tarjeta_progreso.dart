@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../db_service.dart';
-import '../services/progress_stats.dart';
+import '../servicio_bd.dart';
+import '../servicios/estadisticas_progreso.dart';
 
 // Tarjeta que muestra el progreso general del usuario (respuestas, lecciones, racha diaria)
 class ProgressCard extends StatefulWidget {

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../models/course_models.dart';
-import '../pages/course_page.dart';
-import '../services/progress_stats.dart';
+import '../modelos/modelos_curso.dart';
+import '../paginas/pagina_curso.dart';
+import '../servicios/estadisticas_progreso.dart';
 
 // Tarjeta de curso - muestra su estado bloqueado o disponible
 class CourseCard extends StatelessWidget {

@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import '../db_service.dart';
-import '../public_profile_page.dart';
+import '../servicio_bd.dart';
+import '../pagina_perfil_publico.dart';
 
 class DiscussionReply {
   final int? id;

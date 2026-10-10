@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'db_service.dart';
+import 'servicio_bd.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});

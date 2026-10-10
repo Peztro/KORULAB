@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../feedback_service.dart';
-import '../models/course_models.dart';
-import '../pages/course_page.dart';
-import '../services/progress_stats.dart';
+import '../servicio_comentarios.dart';
+import '../modelos/modelos_curso.dart';
+import '../paginas/pagina_curso.dart';
+import '../servicios/estadisticas_progreso.dart';
 
 // ─────────────────────────────────────────────
 //  2. MATCHING PAGE

@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../data/course_catalog.dart';
-import '../db_service.dart';
-import '../models/course_models.dart';
-import '../services/progress_stats.dart';
-import '../support_pages.dart';
-import '../teacher_courses.dart';
+import '../datos/catalogo_cursos.dart';
+import '../servicio_bd.dart';
+import '../modelos/modelos_curso.dart';
+import '../servicios/estadisticas_progreso.dart';
+import '../paginas_soporte.dart';
+import '../cursos_docentes.dart';
 
 class RutaEkoPage extends StatefulWidget {
   final String username;

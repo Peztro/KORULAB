@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'db_service.dart';
-import 'pages/home_page.dart';
-import 'pages/login_page.dart';
-import 'splash_page.dart';
+import 'servicio_bd.dart';
+import 'paginas/pagina_inicio.dart';
+import 'paginas/pagina_login.dart';
+import 'pagina_bienvenida.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

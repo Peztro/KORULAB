@@ -2,11 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
-import 'db_service.dart';
-import 'data/course_catalog.dart';
-import 'models/course_models.dart';
-import 'pages/course_page.dart';
-import 'services/progress_stats.dart';
+import 'servicio_bd.dart';
+import 'datos/catalogo_cursos.dart';
+import 'modelos/modelos_curso.dart';
+import 'paginas/pagina_curso.dart';
+import 'servicios/estadisticas_progreso.dart';
 
 const _typeLabels = {
   'quiz': 'Quiz de opción múltiple',

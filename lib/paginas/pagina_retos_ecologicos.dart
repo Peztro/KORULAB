@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import '../db_service.dart';
+import '../servicio_bd.dart';
 
 // ─────────────────────────────────────────────
 //  COURSE CARD
