@@ -8,6 +8,40 @@ import 'servicio_bd.dart';
 import 'modelos/modelos_curso.dart';
 import 'cursos_docentes.dart' show decodeActivities;
 
+class _SupportLoadingIndicator extends StatelessWidget {
+  const _SupportLoadingIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Image.asset(
+            'assets/images/koruicon.png',
+            height: 80,
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(height: 16),
+          CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(
+              theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Cargando...',
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class SettingsPage extends StatefulWidget {
   final String username;
   final String displayName;
@@ -61,7 +95,7 @@ class _SettingsPageState extends State<SettingsPage> {
         future: _role,
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return const _SupportLoadingIndicator();
           }
           final isAdmin = snapshot.data == DBService.roleAdmin;
           final canTeach = isAdmin || snapshot.data == DBService.roleTeacher;
@@ -322,7 +356,7 @@ class _SupportRequestPageState extends State<SupportRequestPage> {
         foregroundColor: theme.colorScheme.onPrimary,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const _SupportLoadingIndicator()
           : Form(
               key: _formKey,
               child: ListView(
@@ -590,7 +624,7 @@ class _SupportReviewPageState extends State<SupportReviewPage> {
           ],
         ),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const _SupportLoadingIndicator()
             : _error != null
             ? Center(child: Text(_error!))
             : TabBarView(
@@ -638,7 +672,7 @@ class _SupportReviewPageState extends State<SupportReviewPage> {
         final status = request['status'] as String;
         return Card(
           margin: const EdgeInsets.only(bottom: 14),
-          color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.65),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -850,7 +884,7 @@ class _MessagesPageState extends State<MessagesPage> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const _SupportLoadingIndicator()
           : _error != null
           ? Center(
               child: Padding(
@@ -882,8 +916,8 @@ class _MessagesPageState extends State<MessagesPage> {
                   item['created_at'] as String? ?? '',
                 );
                 return Card(
-                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(
-                    0.65,
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.65,
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -1190,7 +1224,7 @@ class _RoleManagementPageState extends State<RoleManagementPage> {
         foregroundColor: theme.colorScheme.onPrimary,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const _SupportLoadingIndicator()
           : _error != null
           ? Center(child: Text(_error!))
           : ListView(
@@ -1616,7 +1650,7 @@ class _StudentProfilesPageState extends State<StudentProfilesPage> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const _SupportLoadingIndicator()
           : _error != null
           ? Center(child: Text(_error!))
           : _students.isEmpty
@@ -1631,8 +1665,8 @@ class _StudentProfilesPageState extends State<StudentProfilesPage> {
                 final photo = student['profile_photo'] as Uint8List?;
                 return Card(
                   margin: const EdgeInsets.only(bottom: 10),
-                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(
-                    0.55,
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.55,
                   ),
                   child: ListTile(
                     leading: CircleAvatar(

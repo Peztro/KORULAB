@@ -104,7 +104,12 @@ class _MemoryPageState extends State<MemoryPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LeaveLessonGuard(
+    active: !completed,
+    child: _buildScaffold(context),
+  );
+
+  Widget _buildScaffold(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -154,9 +159,9 @@ class _MemoryPageState extends State<MemoryPage> {
                             decoration: BoxDecoration(
                               color: showFace
                                   ? theme.colorScheme.primaryContainer
-                                        .withOpacity(0.2)
+                                        .withValues(alpha: 0.2)
                                   : theme.colorScheme.surfaceContainerHighest
-                                        .withOpacity(0.5),
+                                        .withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: showFace
@@ -168,7 +173,7 @@ class _MemoryPageState extends State<MemoryPage> {
                                   ? [
                                       BoxShadow(
                                         color: theme.colorScheme.primary
-                                            .withOpacity(0.2),
+                                            .withValues(alpha: 0.2),
                                         blurRadius: 8,
                                       ),
                                     ]

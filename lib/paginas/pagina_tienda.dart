@@ -55,7 +55,7 @@ class _RewardShopPageState extends State<RewardShopPage> {
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
+      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.65),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -64,7 +64,7 @@ class _RewardShopPageState extends State<RewardShopPage> {
             Row(
               children: [
                 CircleAvatar(
-                  backgroundColor: theme.colorScheme.primary.withOpacity(0.18),
+                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.18),
                   child: Icon(icon, color: theme.colorScheme.primaryContainer),
                 ),
                 const SizedBox(width: 12),
@@ -255,7 +255,7 @@ class _RewardShopPageState extends State<RewardShopPage> {
             margin: const EdgeInsets.only(bottom: 12),
             child: ListTile(
               leading: CircleAvatar(
-                backgroundColor: theme.colorScheme.primary.withOpacity(0.18),
+                backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.18),
                 child: Icon(
                   product.icon,
                   color: theme.colorScheme.primaryContainer,

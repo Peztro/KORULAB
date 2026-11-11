@@ -87,7 +87,7 @@ class _ProgressCardState extends State<ProgressCard> {
             borderRadius: BorderRadius.circular(20),
           ),
           elevation: 3,
-          color: theme.colorScheme.secondaryContainer.withOpacity(0.15),
+          color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.15),
           child: Column(
             children: [
               ListTile(

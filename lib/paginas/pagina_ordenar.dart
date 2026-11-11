@@ -22,6 +22,7 @@ class _SortingPageState extends State<SortingPage> {
   bool hasError = false;
   bool _reportedCompletion = false;
   int incorrectAttempts = 0;
+  final Set<int> _revealedPositions = {};
 
   @override
   void initState() {
@@ -36,6 +37,7 @@ class _SortingPageState extends State<SortingPage> {
       hasError = false;
       _reportedCompletion = false;
       incorrectAttempts = 0;
+      _revealedPositions.clear();
     });
   }
 
@@ -67,11 +69,22 @@ class _SortingPageState extends State<SortingPage> {
         incorrectAttempts++;
         unawaited(vibrateOnWrongAnswer());
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('El orden no es correcto. ¡Sigue intentándolo!'),
-          backgroundColor: Colors.red,
-        ),
+      final wrongPositions = [
+        for (var i = 0; i < currentOrder.length; i++)
+          if (currentOrder[i] != widget.activity.correctOrder[i]) i,
+      ];
+      var candidates = wrongPositions
+          .where((i) => !_revealedPositions.contains(i))
+          .toList();
+      if (candidates.isEmpty) {
+        _revealedPositions.clear();
+        candidates = wrongPositions;
+      }
+      final revealed = candidates.first;
+      _revealedPositions.add(revealed);
+      showWrongAnswerNotice(
+        context,
+        'Posición ${revealed + 1}: ${widget.activity.correctOrder[revealed]}',
       );
       Future.delayed(const Duration(seconds: 1), () {
         if (mounted) {
@@ -84,7 +97,12 @@ class _SortingPageState extends State<SortingPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LeaveLessonGuard(
+    active: !completed,
+    child: _buildScaffold(context),
+  );
+
+  Widget _buildScaffold(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -128,7 +146,7 @@ class _SortingPageState extends State<SortingPage> {
                       data: theme.copyWith(canvasColor: Colors.transparent),
                       child: ReorderableListView.builder(
                         itemCount: currentOrder.length,
-                        onReorder: (oldIndex, newIndex) {
+                        onReorderItem: (oldIndex, newIndex) {
                           setState(() {
                             if (newIndex > oldIndex) {
                               newIndex -= 1;
@@ -143,9 +161,9 @@ class _SortingPageState extends State<SortingPage> {
                             key: ValueKey(step),
                             margin: const EdgeInsets.only(bottom: 12),
                             color: hasError
-                                ? Colors.red.shade900.withOpacity(0.5)
+                                ? Colors.red.shade900.withValues(alpha: 0.5)
                                 : theme.colorScheme.surfaceContainerHighest
-                                      .withOpacity(0.5),
+                                      .withValues(alpha: 0.5),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                               side: BorderSide(
@@ -160,7 +178,7 @@ class _SortingPageState extends State<SortingPage> {
                                 backgroundColor: theme
                                     .colorScheme
                                     .primaryContainer
-                                    .withOpacity(0.2),
+                                    .withValues(alpha: 0.2),
                                 child: Text(
                                   '${index + 1}',
                                   style: TextStyle(

@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../servicio_bd.dart';
-import '../modelos/modelos_curso.dart';
 import '../modelos/modelos_discusion.dart';
 
 class DiscussionPage extends StatefulWidget {
@@ -406,7 +405,7 @@ class _DiscussionPageState extends State<DiscussionPage> {
                     return Card(
                       margin: const EdgeInsets.only(bottom: 10),
                       color: theme.colorScheme.surfaceContainerHighest
-                          .withOpacity(0.65),
+                          .withValues(alpha: 0.65),
                       child: ListTile(
                         leading: GestureDetector(
                           onTap: () => openPublicProfile(
@@ -420,7 +419,7 @@ class _DiscussionPageState extends State<DiscussionPage> {
                                 ? null
                                 : MemoryImage(reply.authorPhoto!),
                             backgroundColor: theme.colorScheme.primary
-                                .withOpacity(0.2),
+                                .withValues(alpha: 0.2),
                             child: reply.authorPhoto == null
                                 ? Icon(
                                     Icons.person,

@@ -75,6 +75,14 @@ class CoursePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final completedActivities = course.activities
+        .where(progressStats.isActivityCompleted)
+        .length;
+    final totalActivities = course.activities.length;
+    final progressPercent = totalActivities > 0
+        ? (completedActivities * 100 / totalActivities).round()
+        : 0;
+
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
@@ -87,66 +95,148 @@ class CoursePage extends StatelessWidget {
       ),
       body: AnimatedBuilder(
         animation: progressStats,
-        builder: (context, _) => ListView.separated(
+        builder: (context, _) => ListView(
           padding: const EdgeInsets.all(16),
-          itemCount: course.activities.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final activity = course.activities[index];
-            final color = _activityColor(activity.type);
-            final isUnlocked = progressStats.isActivityUnlocked(activity);
-            return ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 14,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              tileColor: theme.colorScheme.surfaceContainerHighest.withOpacity(
-                0.5,
-              ),
-              leading: CircleAvatar(
-                backgroundColor: color.withOpacity(0.15),
-                child: Icon(_activityIcon(activity.type), color: color),
-              ),
-              title: Text(
-                activity.title,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-              subtitle: Text(
-                _activityLabel(activity.type),
-                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-              ),
-              trailing: Icon(
-                isUnlocked ? Icons.play_arrow : Icons.lock_outline,
-                color: isUnlocked
-                    ? theme.colorScheme.primaryContainer
-                    : theme.colorScheme.error,
-              ),
-              onTap: () {
-                if (!isUnlocked) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Completa la actividad anterior para continuar.',
+          children: [
+            // Header con información de la unidad
+            Card(
+              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      course.subtitle.isNotEmpty
+                          ? course.subtitle
+                          : 'Completa todas las actividades para dominar este tema',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
-                  );
-                  return;
-                }
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => _buildActivityPage(activity),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: LinearProgressIndicator(
+                            value: progressPercent / 100,
+                            minHeight: 8,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          '$progressPercent%',
+                          style:
+                              theme.textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '$completedActivities de $totalActivities completadas',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Título de actividades
+            Text(
+              'Actividades',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Lista de actividades
+            ...course.activities.asMap().entries.map((entry) {
+              final index = entry.key;
+              final activity = entry.value;
+              final color = _activityColor(activity.type);
+              final isUnlocked = progressStats.isActivityUnlocked(activity);
+              final isCompleted = progressStats.isActivityCompleted(activity);
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
                   ),
-                );
-              },
-            );
-          },
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  tileColor: theme.colorScheme.surfaceContainerHighest
+                      .withValues(
+                    alpha: 0.5,
+                  ),
+                  leading: CircleAvatar(
+                    backgroundColor: color.withValues(alpha: 0.15),
+                    child: isCompleted
+                        ? Icon(
+                      Icons.check_circle,
+                      color: theme.colorScheme.primary,
+                    )
+                        : Icon(
+                      _activityIcon(activity.type),
+                      color: color,
+                    ),
+                  ),
+                  title: Text(
+                    activity.title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  subtitle: Text(
+                    _activityLabel(activity.type),
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  trailing: Icon(
+                    isCompleted
+                        ? Icons.check_circle_outline
+                        : isUnlocked
+                        ? Icons.play_arrow
+                        : Icons.lock_outline,
+                    color: isCompleted
+                        ? theme.colorScheme.primary
+                        : isUnlocked
+                        ? theme.colorScheme.primaryContainer
+                        : theme.colorScheme.error,
+                  ),
+                  onTap: () {
+                    if (!isUnlocked) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Completa la actividad ${index} para continuar.',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => _buildActivityPage(activity),
+                      ),
+                    );
+                  },
+                ),
+              );
+            }),
+          ],
         ),
       ),
     );
@@ -177,11 +267,12 @@ class ResultScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final attempts = score + incorrectAttempts;
     final pct = attempts > 0 ? score / attempts : 0.0;
-    final emoji = pct == 1.0
-        ? '🏆'
+    // Cuando existan más emociones, devolver aquí la imagen según el resultado.
+    final mascot = pct == 1.0
+        ? 'assets/images/koru_base.png'
         : pct >= 0.7
-        ? '⭐'
-        : '💪';
+        ? 'assets/images/koru_base.png'
+        : 'assets/images/koru_base.png';
     final msg = pct == 1.0
         ? '¡Perfecto!'
         : pct >= 0.7
@@ -192,7 +283,7 @@ class ResultScreen extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 72)),
+          Image.asset(mascot, height: 160, fit: BoxFit.contain),
           const SizedBox(height: 16),
           Text(
             msg,

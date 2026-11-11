@@ -26,7 +26,7 @@ class CourseCard extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
-          color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
           elevation: 4,
           child: InkWell(
             borderRadius: BorderRadius.circular(18),
@@ -51,8 +51,8 @@ class CourseCard extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 28,
-                    backgroundColor: theme.colorScheme.primary.withOpacity(
-                      0.15,
+                    backgroundColor: theme.colorScheme.primary.withValues(
+                      alpha: 0.15,
                     ),
                     child: Icon(
                       course.icon,
@@ -131,7 +131,7 @@ class SpecialActivityCard extends StatelessWidget {
     final theme = Theme.of(context);
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      color: color.withOpacity(0.15),
+      color: color.withValues(alpha: 0.15),
       elevation: 4,
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -145,11 +145,11 @@ class SpecialActivityCard extends StatelessWidget {
                 Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: color.withOpacity(0.5), width: 2),
+                    border: Border.all(color: color.withValues(alpha: 0.5), width: 2),
                   ),
                   child: CircleAvatar(
                     radius: 32,
-                    backgroundColor: color.withOpacity(0.2),
+                    backgroundColor: color.withValues(alpha: 0.2),
                     child: Icon(icon, size: 32, color: color),
                   ),
                 ),

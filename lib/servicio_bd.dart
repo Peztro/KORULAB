@@ -31,7 +31,7 @@ class DBService {
   static const String roleStudent = 'student';
 
   static Future<void> init() async {
-    await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+    await Supabase.initialize(url: supabaseUrl, publishableKey: supabaseAnonKey);
     _watchSessionRefresh();
   }
 

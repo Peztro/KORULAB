@@ -24,6 +24,38 @@ class _FillBlankPageState extends State<FillBlankPage> {
   int? _hintedOptionIndex;
   bool completed = false;
   bool _reportedCompletion = false;
+  late List<FillBlankQuestion> shuffledQuestions;
+  final Map<FillBlankQuestion, int> _previousAnswerPositions = {};
+
+  @override
+  void initState() {
+    super.initState();
+    shuffledQuestions = _shuffleQuestions();
+  }
+
+  List<FillBlankQuestion> _shuffleQuestions() {
+    return widget.activity.questions.map((question) {
+      final optionIndexes = List<int>.generate(
+        question.options.length,
+        (index) => index,
+      )..shuffle();
+      var answerPosition = optionIndexes.indexOf(question.answerIndex);
+      final previousAnswerPosition = _previousAnswerPositions[question];
+      if (optionIndexes.length > 1 &&
+          answerPosition == previousAnswerPosition) {
+        final otherPosition = (answerPosition + 1) % optionIndexes.length;
+        optionIndexes[answerPosition] = optionIndexes[otherPosition];
+        optionIndexes[otherPosition] = question.answerIndex;
+        answerPosition = otherPosition;
+      }
+      _previousAnswerPositions[question] = answerPosition;
+      return FillBlankQuestion(
+        sentence: question.sentence,
+        options: optionIndexes.map((index) => question.options[index]).toList(),
+        answerIndex: answerPosition,
+      );
+    }).toList()..shuffle();
+  }
 
   void _reset() {
     setState(() {
@@ -34,26 +66,30 @@ class _FillBlankPageState extends State<FillBlankPage> {
       _hintedOptionIndex = null;
       completed = false;
       _reportedCompletion = false;
+      shuffledQuestions = _shuffleQuestions();
     });
   }
 
   void _selectOption(int index) {
     if (selectedOptionIndex != null) return;
+    final question = shuffledQuestions[currentQuestionIndex];
     setState(() {
       selectedOptionIndex = index;
-      if (widget.activity.questions[currentQuestionIndex].answerIndex ==
-          index) {
+      if (question.answerIndex == index) {
         score++;
       } else {
         incorrectAttempts++;
         unawaited(vibrateOnWrongAnswer());
       }
     });
+    if (question.answerIndex != index) {
+      showWrongAnswerNotice(context, question.options[question.answerIndex]);
+    }
   }
 
   void _useHint() {
     if (selectedOptionIndex != null || _hintedOptionIndex != null) return;
-    final question = widget.activity.questions[currentQuestionIndex];
+    final question = shuffledQuestions[currentQuestionIndex];
     final wrongOptions = [
       for (var index = 0; index < question.options.length; index++)
         if (index != question.answerIndex) index,
@@ -65,7 +101,7 @@ class _FillBlankPageState extends State<FillBlankPage> {
 
   void _useSecondChance() {
     if (selectedOptionIndex == null ||
-        widget.activity.questions[currentQuestionIndex].answerIndex ==
+        shuffledQuestions[currentQuestionIndex].answerIndex ==
             selectedOptionIndex) {
       return;
     }
@@ -74,7 +110,7 @@ class _FillBlankPageState extends State<FillBlankPage> {
   }
 
   void _nextQuestion() {
-    if (currentQuestionIndex + 1 >= widget.activity.questions.length) {
+    if (currentQuestionIndex + 1 >= shuffledQuestions.length) {
       setState(() {
         completed = true;
       });
@@ -82,7 +118,7 @@ class _FillBlankPageState extends State<FillBlankPage> {
         _reportedCompletion = true;
         progressStats.reportLessonResult(
           score,
-          widget.activity.questions.length,
+          shuffledQuestions.length,
           activity: widget.activity,
           incorrectAttempts: incorrectAttempts,
         );
@@ -97,7 +133,12 @@ class _FillBlankPageState extends State<FillBlankPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LeaveLessonGuard(
+    active: !completed,
+    child: _buildScaffold(context),
+  );
+
+  Widget _buildScaffold(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -123,7 +164,7 @@ class _FillBlankPageState extends State<FillBlankPage> {
 
   Widget _buildBody() {
     final theme = Theme.of(context);
-    final q = widget.activity.questions[currentQuestionIndex];
+    final q = shuffledQuestions[currentQuestionIndex];
     final sentenceParts = q.sentence.split('___');
     final String part1 = sentenceParts.isNotEmpty ? sentenceParts[0] : '';
     final String part2 = sentenceParts.length > 1 ? sentenceParts[1] : '';
@@ -132,13 +173,13 @@ class _FillBlankPageState extends State<FillBlankPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         LinearProgressIndicator(
-          value: (currentQuestionIndex + 1) / widget.activity.questions.length,
+          value: (currentQuestionIndex + 1) / shuffledQuestions.length,
           backgroundColor: theme.colorScheme.outlineVariant,
           color: theme.colorScheme.primaryContainer,
         ),
         const SizedBox(height: 12),
         Text(
-          'Pregunta ${currentQuestionIndex + 1} de ${widget.activity.questions.length}',
+          'Pregunta ${currentQuestionIndex + 1} de ${shuffledQuestions.length}',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -147,10 +188,10 @@ class _FillBlankPageState extends State<FillBlankPage> {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: theme.colorScheme.outlineVariant.withOpacity(0.5),
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
             ),
           ),
           child: RichText(
@@ -249,8 +290,8 @@ class _FillBlankPageState extends State<FillBlankPage> {
                 backgroundColor: isEliminated
                     ? theme.colorScheme.outlineVariant
                     : cardColor ??
-                          theme.colorScheme.surfaceContainerHighest.withOpacity(
-                            0.5,
+                          theme.colorScheme.surfaceContainerHighest.withValues(
+                            alpha: 0.5,
                           ),
                 foregroundColor: isEliminated
                     ? theme.colorScheme.onSurfaceVariant
@@ -288,7 +329,7 @@ class _FillBlankPageState extends State<FillBlankPage> {
           ),
           onPressed: selectedOptionIndex == null ? null : _nextQuestion,
           child: Text(
-            currentQuestionIndex + 1 == widget.activity.questions.length
+            currentQuestionIndex + 1 == shuffledQuestions.length
                 ? 'Finalizar'
                 : 'Siguiente',
           ),

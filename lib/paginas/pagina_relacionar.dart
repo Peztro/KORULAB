@@ -72,12 +72,14 @@ class _MatchingPageState extends State<MatchingPage> {
         }
       });
     } else {
+      final wrongTerm = selectedTerm!;
       setState(() {
         incorrectAttempts++;
         unawaited(vibrateOnWrongAnswer());
         wrongAttempts.add('${selectedTerm!}_$def');
         selectedTerm = null;
       });
+      showWrongAnswerNotice(context, '$wrongTerm → $correctDef');
       Future.delayed(const Duration(milliseconds: 600), () {
         if (mounted) setState(() => wrongAttempts.clear());
       });
@@ -85,7 +87,12 @@ class _MatchingPageState extends State<MatchingPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LeaveLessonGuard(
+    active: !completed,
+    child: _buildScaffold(context),
+  );
+
+  Widget _buildScaffold(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -147,16 +154,16 @@ class _MatchingPageState extends State<MatchingPage> {
                                       ),
                                       decoration: BoxDecoration(
                                         color: isMatched
-                                            ? Colors.green.shade800.withOpacity(
-                                                0.7,
+                                            ? Colors.green.shade800.withValues(
+                                                alpha: 0.7,
                                               )
                                             : isSelected
                                             ? Colors.purple.shade900
-                                                  .withOpacity(0.8)
+                                                  .withValues(alpha: 0.8)
                                             : theme
                                                   .colorScheme
                                                   .surfaceContainerHighest
-                                                  .withOpacity(0.5),
+                                                  .withValues(alpha: 0.5),
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
                                           color: isMatched
@@ -215,17 +222,17 @@ class _MatchingPageState extends State<MatchingPage> {
                                       ),
                                       decoration: BoxDecoration(
                                         color: isMatched
-                                            ? Colors.green.shade800.withOpacity(
-                                                0.7,
+                                            ? Colors.green.shade800.withValues(
+                                                alpha: 0.7,
                                               )
                                             : isWrong
-                                            ? Colors.red.shade900.withOpacity(
-                                                0.8,
+                                            ? Colors.red.shade900.withValues(
+                                                alpha: 0.8,
                                               )
                                             : theme
                                                   .colorScheme
                                                   .surfaceContainerHighest
-                                                  .withOpacity(0.5),
+                                                  .withValues(alpha: 0.5),
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
                                           color: isMatched

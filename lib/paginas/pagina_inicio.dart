@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../servicio_bd.dart';
@@ -17,6 +16,7 @@ import '../widgets/selector_cuentas.dart';
 import '../cursos_docentes.dart';
 import '../widgets/tarjetas_inicio.dart';
 import '../widgets/tarjeta_progreso.dart';
+import '../widgets/mascota_guia.dart';
 
 // Página principal del usuario - muestra lecciones, actividades especiales y progreso
 class HomePage extends StatefulWidget {
@@ -174,12 +174,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  static const _sectionTitles = [
-    'Página principal',
-    'Aprende con Korucol',
-    'Korublog',
-  ];
-
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -252,6 +246,11 @@ class _HomePageState extends State<HomePage> {
           _isRoleLoaded = true;
           _roleLoadError = null;
         });
+        if (role == DBService.roleStudent) {
+          unawaited(
+            MascotaGuia.mostrarSiEsPrimeraVez(context, _currentUsername),
+          );
+        }
       }
     } catch (error) {
       debugPrint('No se pudo cargar el rol de la cuenta: $error');
@@ -531,7 +530,7 @@ class _HomePageState extends State<HomePage> {
     required VoidCallback onTap,
   }) {
     return Card(
-      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
+      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.65),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 18,
@@ -908,7 +907,7 @@ class _HomePageState extends State<HomePage> {
         DBService.normalizeUsername(space.authorHandle) == _currentUsername;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
+      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.65),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(
@@ -926,7 +925,7 @@ class _HomePageState extends State<HomePage> {
             backgroundImage: space.authorPhoto == null
                 ? null
                 : MemoryImage(space.authorPhoto!),
-            backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
+            backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.2),
             child: space.authorPhoto == null
                 ? Icon(Icons.forum, color: theme.colorScheme.primaryContainer)
                 : null,
@@ -1126,7 +1125,7 @@ class _HomePageState extends State<HomePage> {
   ) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
+      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.65),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(
@@ -1323,8 +1322,8 @@ class _HomePageState extends State<HomePage> {
                           Text(
                             '@$_currentUsername',
                             style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onPrimary.withOpacity(
-                                0.8,
+                              color: theme.colorScheme.onPrimary.withValues(
+                                alpha: 0.8,
                               ),
                             ),
                           ),

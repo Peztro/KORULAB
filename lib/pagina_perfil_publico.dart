@@ -415,7 +415,7 @@ class _ActivityList extends StatelessWidget {
         final (title, body, date) = items[index];
         return Card(
           margin: const EdgeInsets.only(bottom: 10),
-          color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.55),
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
           child: ListTile(
             title: Text(
               title,

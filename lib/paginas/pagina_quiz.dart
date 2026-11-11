@@ -25,11 +25,36 @@ class _QuizPageState extends State<QuizPage> {
   bool completed = false;
   bool _reportedCompletion = false;
   late List<Question> shuffledQuestions;
+  final Map<Question, int> _previousAnswerPositions = {};
 
   @override
   void initState() {
     super.initState();
-    shuffledQuestions = List.from(widget.activity.questions)..shuffle();
+    shuffledQuestions = _shuffleQuestions();
+  }
+
+  List<Question> _shuffleQuestions() {
+    return widget.activity.questions.map((question) {
+      final optionIndexes = List<int>.generate(
+        question.options.length,
+        (index) => index,
+      )..shuffle();
+      var answerPosition = optionIndexes.indexOf(question.answerIndex);
+      final previousAnswerPosition = _previousAnswerPositions[question];
+      if (optionIndexes.length > 1 &&
+          answerPosition == previousAnswerPosition) {
+        final otherPosition = (answerPosition + 1) % optionIndexes.length;
+        optionIndexes[answerPosition] = optionIndexes[otherPosition];
+        optionIndexes[otherPosition] = question.answerIndex;
+        answerPosition = otherPosition;
+      }
+      _previousAnswerPositions[question] = answerPosition;
+      return Question(
+        prompt: question.prompt,
+        options: optionIndexes.map((index) => question.options[index]).toList(),
+        answerIndex: answerPosition,
+      );
+    }).toList()..shuffle();
   }
 
   void _reset() {
@@ -41,7 +66,7 @@ class _QuizPageState extends State<QuizPage> {
       score = 0;
       incorrectAttempts = 0;
       _reportedCompletion = false;
-      shuffledQuestions = List.from(widget.activity.questions)..shuffle();
+      shuffledQuestions = _shuffleQuestions();
     });
   }
 
@@ -58,15 +83,19 @@ class _QuizPageState extends State<QuizPage> {
 
   void selectOption(int index) {
     if (selectedOption != null) return;
+    final question = shuffledQuestions[questionIndex];
     setState(() {
       selectedOption = index;
-      if (shuffledQuestions[questionIndex].answerIndex == index) {
+      if (question.answerIndex == index) {
         score++;
       } else {
         incorrectAttempts++;
         unawaited(vibrateOnWrongAnswer());
       }
     });
+    if (question.answerIndex != index) {
+      showWrongAnswerNotice(context, question.options[question.answerIndex]);
+    }
   }
 
   void _useHint() {
@@ -106,7 +135,12 @@ class _QuizPageState extends State<QuizPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LeaveLessonGuard(
+    active: !completed,
+    child: _buildScaffold(context),
+  );
+
+  Widget _buildScaffold(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -204,8 +238,8 @@ class _QuizPageState extends State<QuizPage> {
                 backgroundColor: isEliminated
                     ? theme.colorScheme.outlineVariant
                     : cardColor ??
-                          theme.colorScheme.surfaceContainerHighest.withOpacity(
-                            0.5,
+                          theme.colorScheme.surfaceContainerHighest.withValues(
+                            alpha: 0.5,
                           ),
                 foregroundColor: isEliminated
                     ? theme.colorScheme.onSurfaceVariant

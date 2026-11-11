@@ -91,8 +91,8 @@ class _EcoChallengesPageState extends State<EcoChallengesPage> {
           ..._challenges.map((challenge) {
             return Card(
               margin: const EdgeInsets.only(bottom: 10),
-              color: theme.colorScheme.surfaceContainerHighest.withOpacity(
-                0.65,
+              color: theme.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.65,
               ),
               child: Column(
                 children: [
