@@ -46,3 +46,6 @@ app.*.map.json
 
 # Reportes de compilación de Android (se generan solos)
 /android/build/
+
+# Diferencias de pruebas visuales fallidas (se generan solas)
+test/visual/failures/
