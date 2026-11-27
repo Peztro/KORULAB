@@ -7,22 +7,19 @@ import 'package:flutter/services.dart';
 import '../../juegos/datos_juegos.dart';
 import '../../tema/tema_korulab.dart';
 import '../../widgets/boton_inicio.dart';
+import 'escenario_gotas.dart';
 import 'fin_de_juego.dart';
 
 /// Salva las gotas: mueve la planta para atrapar el agua limpia y esquiva
 /// las gotas contaminadas. Cada gota limpia que cae al suelo cuesta una vida.
+///
+/// El paisaje avanza del día a la noche a medida que sumas gotas y la planta
+/// crece por etapas.
 class JuegoGotas extends StatefulWidget {
   const JuegoGotas({super.key});
 
   @override
   State<JuegoGotas> createState() => _JuegoGotasState();
-}
-
-class _Gota {
-  _Gota(this.x, this.tipo);
-  final double x;
-  final TipoGota tipo;
-  double y = -0.05;
 }
 
 /// Texto que sube y se desvanece sobre la planta ("+1", "-2 ❤").
@@ -34,20 +31,23 @@ class _Etiqueta {
   double edad = 0;
 }
 
-/// Colores de cada gota (iguales en tema claro y oscuro para que se
-/// reconozcan siempre).
-Color colorGota(TipoGota tipo) => switch (tipo) {
-  TipoGota.agua => const Color(0xFF29B6F6),
-  TipoGota.aceite => const Color(0xFF8D6E63),
-  TipoGota.acida => const Color(0xFFC0CA33),
-  TipoGota.petroleo => const Color(0xFF212121),
-  TipoGota.dorada => const Color(0xFFFFC107),
-};
+/// La planta crece con las gotas salvadas.
+String plantaPara(int puntos) => puntos < 10
+    ? '🌱'
+    : puntos < 25
+    ? '🌿'
+    : puntos < 50
+    ? '🪴'
+    : '🌻';
 
 class _JuegoGotasState extends State<JuegoGotas> with TickerProviderStateMixin {
-  static const _anchoPlanta = 0.22;
+  static const _anchoPlanta = anchoPlantaGotas;
   static const _altoPlanta = 0.86;
+  static const _suelo = 0.94;
   static const _vidaEtiqueta = 0.9;
+
+  /// Segundos que la leyenda se ve al empezar (o al pedirla con "?").
+  static const _duracionLeyenda = 8.0;
 
   final _azar = Random();
   late final Ticker _ticker = createTicker(_avanzar);
@@ -59,13 +59,14 @@ class _JuegoGotasState extends State<JuegoGotas> with TickerProviderStateMixin {
     duration: const Duration(milliseconds: 320),
   );
 
-  /// Sacudida al atrapar una gota mala.
+  /// Sacudida al atrapar una gota mala (la planta y la pantalla).
   late final AnimationController _sacudida = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 420),
   );
 
-  final _gotas = <_Gota>[];
+  final _gotas = <GotaCayendo>[];
+  final _particulas = <Particula>[];
   final _etiquetas = <_Etiqueta>[];
   double _planta = 0.5;
 
@@ -77,8 +78,14 @@ class _JuegoGotasState extends State<JuegoGotas> with TickerProviderStateMixin {
   int _atrapadas = 0;
   bool _terminado = false;
 
-  /// Destello rojo del fondo al perder una vida.
-  bool _golpe = false;
+  /// Segundos de juego (mueven nubes, pasto y destellos).
+  double _tiempo = 0;
+
+  /// Hasta qué momento se ve la leyenda.
+  double _leyendaHasta = _duracionLeyenda;
+
+  /// Tinte rojo del paisaje al perder vida (se apaga solo).
+  double _golpe = 0;
 
   @override
   void initState() {
@@ -88,6 +95,7 @@ class _JuegoGotasState extends State<JuegoGotas> with TickerProviderStateMixin {
 
   void _empezar() {
     _gotas.clear();
+    _particulas.clear();
     _etiquetas.clear();
     _planta = 0.5;
     _ultimaBuena = null;
@@ -96,6 +104,9 @@ class _JuegoGotasState extends State<JuegoGotas> with TickerProviderStateMixin {
     _vidas = vidasGotas;
     _atrapadas = 0;
     _terminado = false;
+    _tiempo = 0;
+    _leyendaHasta = _duracionLeyenda;
+    _golpe = 0;
     _anterior = Duration.zero;
     if (_ticker.isActive) _ticker.stop();
     _ticker.start();
@@ -109,26 +120,20 @@ class _JuegoGotasState extends State<JuegoGotas> with TickerProviderStateMixin {
     _anterior = transcurrido;
     if (dt <= 0 || dt > 0.1) return; // primer cuadro o tirón
 
+    _tiempo += dt;
+    _golpe = max(0, _golpe - dt * 4);
     final velocidad = velocidadGotas(_puntos);
 
     _hastaLaSiguiente -= dt;
     if (_hastaLaSiguiente <= 0) {
       _hastaLaSiguiente = intervaloGotas(_puntos);
-      // La gota buena más baja: hacia donde va el jugador.
-      _Gota? objetivo;
-      for (final g in _gotas) {
-        if (!g.tipo.esMala && (objetivo == null || g.y > objetivo.y)) {
-          objetivo = g;
-        }
-      }
       for (final nueva in planearGotas(
         puntos: _puntos,
         ultimaBuena: _ultimaBuena,
-        objetivo: objetivo?.x,
         azar: _azar,
       )) {
         if (!nueva.tipo.esMala) _ultimaBuena = nueva.x;
-        _gotas.add(_Gota(nueva.x, nueva.tipo)..y = nueva.y);
+        _gotas.add(GotaCayendo(nueva.x, nueva.tipo, y: nueva.y));
       }
     }
 
@@ -140,13 +145,25 @@ class _JuegoGotasState extends State<JuegoGotas> with TickerProviderStateMixin {
           (gota.x - _planta).abs() <= _anchoPlanta / 2;
       if (enPlanta) {
         _gotas.remove(gota);
-        _atrapar(gota.tipo);
-      } else if (gota.y > 1.02) {
+        _atrapar(gota);
+      } else if (gota.y > _suelo) {
         _gotas.remove(gota);
+        // Salpica contra el suelo.
+        _particulas.addAll(
+          salpicadura(
+            x: gota.x,
+            y: _suelo,
+            color: colorGota(gota.tipo),
+            azar: _azar,
+            cantidad: 7,
+            fuerza: 0.35,
+          ),
+        );
         if (gota.tipo.cuestaVidaSiCae) _perderVidas(1, gota.x, vibrar: false);
       }
     }
 
+    _particulas.removeWhere((p) => !p.avanzar(dt));
     for (final e in [..._etiquetas]) {
       e.edad += dt;
       if (e.edad >= _vidaEtiqueta) _etiquetas.remove(e);
@@ -159,34 +176,70 @@ class _JuegoGotasState extends State<JuegoGotas> with TickerProviderStateMixin {
     setState(() {});
   }
 
-  void _atrapar(TipoGota tipo) {
+  void _atrapar(GotaCayendo gota) {
+    final tipo = gota.tipo;
     final cambio = tipo.vidasAlAtrapar;
+    final arriba = _altoPlanta - 0.02;
     if (cambio < 0) {
+      _particulas.addAll(
+        salpicadura(
+          x: gota.x,
+          y: arriba,
+          color: colorGota(tipo),
+          azar: _azar,
+          cantidad: 16,
+          fuerza: 0.6,
+          haciaArriba: false,
+        ),
+      );
       _perderVidas(-cambio, _planta, vibrar: true);
       _sacudida.forward(from: 0);
       return;
     }
+    final etapaAntes = plantaPara(_puntos);
     _puntos += tipo.puntosAlAtrapar;
     _atrapadas++;
     _vidas += cambio;
     _salto.forward(from: 0);
+    _particulas.addAll(
+      salpicadura(
+        x: gota.x,
+        y: arriba,
+        color: colorGota(tipo),
+        azar: _azar,
+        cantidad: tipo == TipoGota.dorada ? 22 : 12,
+        fuerza: tipo == TipoGota.dorada ? 0.75 : 0.55,
+      ),
+    );
     final koru = context.koru;
     _etiquetas.add(
       cambio > 0
           ? _Etiqueta('+1 ❤', koru.oro, _planta)
-          : _Etiqueta('+1', koru.agua, _planta),
+          : _Etiqueta('+1', const Color(0xFF0277BD), _planta),
     );
+    if (plantaPara(_puntos) != etapaAntes) {
+      // ¡La planta creció!
+      _etiquetas.add(_Etiqueta('¡Creció!', const Color(0xFF2E7D32), _planta));
+      _particulas.addAll(
+        salpicadura(
+          x: _planta,
+          y: arriba,
+          color: const Color(0xFF66BB6A),
+          azar: _azar,
+          cantidad: 20,
+          fuerza: 0.7,
+          haciaArriba: false,
+        ),
+      );
+    }
     if (cambio > 0) HapticFeedback.selectionClick();
   }
 
   void _perderVidas(int cuantas, double x, {required bool vibrar}) {
     _vidas -= cuantas;
-    _etiquetas.add(_Etiqueta('-$cuantas ❤', context.koru.fuego, x));
+    _etiquetas.add(_Etiqueta('-$cuantas ❤', const Color(0xFFD32F2F), x));
     if (vibrar) HapticFeedback.mediumImpact();
-    _golpe = true;
-    Future.delayed(const Duration(milliseconds: 180), () {
-      if (mounted) setState(() => _golpe = false);
-    });
+    _golpe = 1;
   }
 
   void _moverPlanta(double dx, double ancho) {
@@ -252,85 +305,112 @@ class _JuegoGotasState extends State<JuegoGotas> with TickerProviderStateMixin {
                 builder: (context, r) {
                   final ancho = r.maxWidth;
                   final alto = r.maxHeight;
-                  final tamGota = ancho * 0.09;
                   final yPlanta =
                       _altoPlanta * alto - ancho * _anchoPlanta * 0.35;
+                  final verLeyenda = _tiempo < _leyendaHasta;
                   return GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onPanDown: (d) => _moverPlanta(d.localPosition.dx, ancho),
                     onPanUpdate: (d) => _moverPlanta(d.localPosition.dx, ancho),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 120),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            koru.agua.withValues(alpha: 0.16),
-                            _golpe
-                                ? koru.fuego.withValues(alpha: 0.35)
-                                : koru.hoja.withValues(alpha: 0.22),
-                          ],
-                        ),
-                      ),
-                      child: Stack(
-                        children: [
-                          const Positioned(
-                            left: 8,
-                            right: 8,
-                            top: 8,
-                            child: _Leyenda(),
-                          ),
-                          for (final gota in _gotas)
-                            Positioned(
-                              left: gota.x * ancho - tamGota / 2,
-                              top: gota.y * alto - tamGota / 2,
-                              child: _DibujoGota(
-                                tipo: gota.tipo,
-                                tamano: tamGota,
+                    child: ClipRect(
+                      // La pantalla tiembla un poco con los golpes.
+                      child: AnimatedBuilder(
+                        animation: _sacudida,
+                        builder: (context, child) {
+                          final t = _sacudida.value;
+                          final temblor = _sacudida.isAnimating
+                              ? sin(t * pi * 8) * (1 - t) * 6
+                              : 0.0;
+                          return Transform.translate(
+                            offset: Offset(temblor, 0),
+                            child: child,
+                          );
+                        },
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: CustomPaint(
+                                painter: PaisajePainter(
+                                  tiempo: _tiempo,
+                                  fase: faseDelDia(_puntos),
+                                  golpe: _golpe,
+                                ),
                               ),
                             ),
-                          // Suelo.
-                          Positioned(
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            height: alto * 0.06,
-                            child: ColoredBox(
-                              color: koru.tierra.withValues(alpha: 0.5),
-                            ),
-                          ),
-                          Positioned(
-                            left: (_planta - _anchoPlanta / 2) * ancho,
-                            top: yPlanta,
-                            width: _anchoPlanta * ancho,
-                            child: _PlantaAnimada(
-                              salto: _salto,
-                              sacudida: _sacudida,
-                              tamano: ancho * 0.18,
-                            ),
-                          ),
-                          for (final e in _etiquetas)
-                            Positioned(
-                              left: e.x * ancho - 40,
-                              width: 80,
-                              top: yPlanta - 24 - e.edad * 60,
-                              child: Opacity(
-                                opacity: (1 - e.edad / _vidaEtiqueta).clamp(
-                                  0,
-                                  1,
+                            Positioned.fill(
+                              child: CustomPaint(
+                                painter: GotasPainter(
+                                  gotas: _gotas,
+                                  particulas: _particulas,
+                                  velocidad: velocidadGotas(_puntos),
+                                  tiempo: _tiempo,
                                 ),
-                                child: Text(
-                                  e.texto,
-                                  textAlign: TextAlign.center,
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    color: e.color,
-                                    fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            Positioned(
+                              left: (_planta - _anchoPlanta / 2) * ancho,
+                              top: yPlanta,
+                              width: _anchoPlanta * ancho,
+                              child: _PlantaAnimada(
+                                salto: _salto,
+                                sacudida: _sacudida,
+                                tamano: ancho * 0.18,
+                                planta: plantaPara(_puntos),
+                              ),
+                            ),
+                            for (final e in _etiquetas)
+                              Positioned(
+                                left: e.x * ancho - 50,
+                                width: 100,
+                                top: yPlanta - 24 - e.edad * 60,
+                                child: Opacity(
+                                  opacity: (1 - e.edad / _vidaEtiqueta).clamp(
+                                    0,
+                                    1,
+                                  ),
+                                  child: Text(
+                                    e.texto,
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      color: e.color,
+                                      fontWeight: FontWeight.w900,
+                                      shadows: const [
+                                        Shadow(
+                                          color: Colors.white,
+                                          blurRadius: 6,
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
+                            // La leyenda se aparta sola; "?" la vuelve a mostrar.
+                            Positioned(
+                              left: 8,
+                              right: 48,
+                              top: 8,
+                              child: IgnorePointer(
+                                child: AnimatedOpacity(
+                                  opacity: verLeyenda ? 1 : 0,
+                                  duration: const Duration(milliseconds: 400),
+                                  child: const _Leyenda(),
+                                ),
+                              ),
                             ),
-                        ],
+                            Positioned(
+                              right: 4,
+                              top: 4,
+                              child: IconButton.filledTonal(
+                                tooltip: 'Qué hace cada gota',
+                                icon: const Icon(Icons.help_outline_rounded),
+                                onPressed: () => setState(
+                                  () => _leyendaHasta =
+                                      _tiempo + _duracionLeyenda / 2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   );
@@ -348,20 +428,30 @@ class _PlantaAnimada extends StatelessWidget {
     required this.salto,
     required this.sacudida,
     required this.tamano,
+    required this.planta,
   });
 
   final Animation<double> salto;
   final Animation<double> sacudida;
   final double tamano;
 
+  /// Emoji de la etapa de la planta.
+  final String planta;
+
   @override
   Widget build(BuildContext context) {
-    final planta = FittedBox(
-      child: Text('🪴', style: TextStyle(fontSize: tamano)),
+    final dibujo = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 350),
+      transitionBuilder: (child, anim) =>
+          ScaleTransition(scale: anim, child: child),
+      child: FittedBox(
+        key: ValueKey(planta),
+        child: Text(planta, style: TextStyle(fontSize: tamano)),
+      ),
     );
     return AnimatedBuilder(
       animation: Listenable.merge([salto, sacudida]),
-      child: planta,
+      child: dibujo,
       builder: (context, child) {
         // Salto: sube y se estira un poco, y vuelve.
         final s = sin(salto.value * pi);
@@ -391,59 +481,6 @@ class _PlantaAnimada extends StatelessWidget {
   }
 }
 
-class _DibujoGota extends StatelessWidget {
-  const _DibujoGota({required this.tipo, required this.tamano});
-
-  final TipoGota tipo;
-  final double tamano;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = colorGota(tipo);
-    final gota = Icon(
-      Icons.water_drop_rounded,
-      size: tamano,
-      color: color,
-      shadows: [
-        Shadow(
-          color: tipo == TipoGota.dorada
-              ? color
-              : Colors.black.withValues(alpha: 0.35),
-          blurRadius: tipo == TipoGota.dorada ? 14 : 3,
-        ),
-      ],
-    );
-    return SizedBox(
-      width: tamano,
-      height: tamano,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          gota,
-          // Marca pequeña para distinguirlas sin depender solo del color.
-          if (tipo != TipoGota.agua)
-            Padding(
-              padding: EdgeInsets.only(top: tamano * 0.25),
-              child: Text(
-                switch (tipo) {
-                  TipoGota.aceite => '🍳',
-                  TipoGota.acida => '☠',
-                  TipoGota.petroleo => '⚫',
-                  TipoGota.dorada => '✨',
-                  TipoGota.agua => '',
-                },
-                style: TextStyle(
-                  fontSize: tamano * 0.32,
-                  color: tipo == TipoGota.acida ? Colors.black87 : null,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Explica qué hace cada gota.
 class _Leyenda extends StatelessWidget {
   const _Leyenda();
@@ -465,18 +502,19 @@ class _Leyenda extends StatelessWidget {
           Container(
             padding: const EdgeInsets.fromLTRB(4, 2, 8, 2),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surface.withValues(alpha: 0.75),
+              color: Colors.white.withValues(alpha: 0.85),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _DibujoGota(tipo: tipo, tamano: 20),
+                IconoGota(tipo: tipo, tamano: 22),
                 const SizedBox(width: 2),
                 Text(
                   '${tipo.nombre} ${efecto(tipo)}',
                   style: theme.textTheme.labelSmall?.copyWith(
                     fontWeight: FontWeight.w800,
+                    color: Colors.black87,
                   ),
                 ),
               ],

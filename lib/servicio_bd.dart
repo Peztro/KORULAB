@@ -11,6 +11,7 @@ import 'modelos/perfil.dart';
 import 'servicios/koru_controlador.dart';
 import 'servicios/servicio_biometrico.dart';
 import 'servicios/sesion_actual.dart';
+import 'servicios/servicio_push.dart';
 
 /// Acceso a datos de Korulab sobre Supabase (Auth + Postgres).
 /// El esquema y las políticas de seguridad están en supabase/schema.sql.
@@ -1703,6 +1704,9 @@ class DBService {
   static Future<bool> logout() async {
     try {
       final userId = _db.auth.currentUser?.id;
+      // Antes de cerrar la sesión: que este teléfono deje de recibir las
+      // notificaciones de la cuenta.
+      await ServicioPush.olvidar();
       if (userId != null) await forgetAccount(userId);
       await _db.auth.signOut();
       _cachedUsername = null;

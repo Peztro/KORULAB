@@ -9,9 +9,17 @@ import 'koru_mascota.dart';
 /// Se coloca dentro de un [Stack]; solo ocupa (y recibe toques en) su propio
 /// espacio, así que no bloquea el resto de la pantalla.
 class MascotaFlotante extends StatefulWidget {
-  const MascotaFlotante({super.key, this.tamano = 76});
+  const MascotaFlotante({
+    super.key,
+    this.tamano = 76,
+    this.acciones = const {},
+  });
 
   final double tamano;
+
+  /// Qué hacer al tocar el globo según por qué habló Koru (por ejemplo,
+  /// abrir los chats cuando avisa de mensajes nuevos).
+  final Map<EventoKoru, VoidCallback> acciones;
 
   @override
   State<MascotaFlotante> createState() => _MascotaFlotanteState();
@@ -86,6 +94,7 @@ class _MascotaFlotanteState extends State<MascotaFlotante> with RouteAware {
                   key: ValueKey(mensaje),
                   texto: mensaje.texto,
                   onCerrar: _koru.callar,
+                  accion: widget.acciones[mensaje.evento],
                 ),
         ),
         const SizedBox(height: 6),
@@ -126,10 +135,19 @@ class _MascotaFlotanteState extends State<MascotaFlotante> with RouteAware {
 }
 
 class _Globo extends StatelessWidget {
-  const _Globo({super.key, required this.texto, required this.onCerrar});
+  const _Globo({
+    super.key,
+    required this.texto,
+    required this.onCerrar,
+    this.accion,
+  });
 
   final String texto;
   final VoidCallback onCerrar;
+
+  /// Si hay acción, tocar el globo la hace (y lo cierra) en vez de solo
+  /// cerrarlo, y en lugar de la ✕ se ve una flecha.
+  final VoidCallback? accion;
 
   @override
   Widget build(BuildContext context) {
@@ -151,7 +169,10 @@ class _Globo extends StatelessWidget {
           side: BorderSide(color: context.koru.hoja.withValues(alpha: 0.4)),
         ),
         child: InkWell(
-          onTap: onCerrar,
+          onTap: () {
+            onCerrar();
+            accion?.call();
+          },
           borderRadius: BorderRadius.circular(18),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
@@ -169,9 +190,13 @@ class _Globo extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Icon(
-                  Icons.close_rounded,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
+                  accion != null
+                      ? Icons.arrow_forward_rounded
+                      : Icons.close_rounded,
+                  size: accion != null ? 18 : 16,
+                  color: accion != null
+                      ? context.koru.agua
+                      : theme.colorScheme.onSurfaceVariant,
                 ),
               ],
             ),

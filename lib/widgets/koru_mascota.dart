@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 /// Emociones de Koru, el caracol de Korulab.
@@ -56,14 +54,8 @@ class KoruMascota extends StatefulWidget {
     EmocionKoru.tendero: 'assets/images/koru_tienda.png',
   };
 
-  /// Poses que ya vienen dibujadas con línea de contorno: no necesitan el
-  /// contorno automático del tema claro.
-  static const Set<String> _conLineaPropia = {
-    'assets/images/koru_celebrando.png',
-    'assets/images/koru_mando.png',
-    'assets/images/koru_leyendo.png',
-    'assets/images/koru_tienda.png',
-  };
+  // Todas las poses traen su propia línea negra de dibujo, así se ven
+  // bien sobre fondos claros y oscuros sin contornos agregados.
 
   static String imagen(EmocionKoru emocion) => _imagenes[emocion]!;
 
@@ -115,71 +107,18 @@ class _KoruMascotaState extends State<KoruMascota>
     super.dispose();
   }
 
-  /// Imagen de Koru con un contorno dibujado alrededor.
-  ///
-  /// El dibujo original no tiene líneas de borde y sobre fondos claros se
-  /// pierde. El contorno se hace pintando la silueta en [color] varias veces,
-  /// desplazada en círculo, y la imagen normal encima.
-  Widget _conContorno(String ruta, Color color) {
-    final grosor = (widget.tamano * 0.018).clamp(1.2, 3.0);
-    const pasos = 12;
-    Widget silueta(Offset desplazamiento) => Transform.translate(
-      offset: desplazamiento,
-      child: Image.asset(
-        ruta,
-        width: widget.tamano,
-        height: widget.tamano,
-        fit: BoxFit.contain,
-        color: color,
-        colorBlendMode: BlendMode.srcIn,
-        excludeFromSemantics: true,
-      ),
-    );
-    return RepaintBoundary(
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          for (var i = 0; i < pasos; i++)
-            silueta(
-              Offset(
-                grosor * math.cos(2 * math.pi * i / pasos),
-                grosor * math.sin(2 * math.pi * i / pasos),
-              ),
-            ),
-          Image.asset(
-            ruta,
-            width: widget.tamano,
-            height: widget.tamano,
-            fit: BoxFit.contain,
-            semanticLabel: 'Koru, el caracol de Korulab',
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final ruta = KoruMascota.imagen(widget.emocion);
-    final theme = Theme.of(context);
-    // En tema claro, contorno verde oscuro para que Koru no se pierda
-    // (salvo en las poses que ya traen su propia línea).
-    final claro =
-        theme.brightness == Brightness.light &&
-        !KoruMascota._conLineaPropia.contains(ruta);
     final imagen = AnimatedSwitcher(
       duration: const Duration(milliseconds: 250),
-      child: KeyedSubtree(
-        key: ValueKey((widget.emocion, claro)),
-        child: claro
-            ? _conContorno(ruta, theme.colorScheme.onPrimaryContainer)
-            : Image.asset(
-                ruta,
-                width: widget.tamano,
-                height: widget.tamano,
-                fit: BoxFit.contain,
-                semanticLabel: 'Koru, el caracol de Korulab',
-              ),
+      child: Image.asset(
+        ruta,
+        key: ValueKey(widget.emocion),
+        width: widget.tamano,
+        height: widget.tamano,
+        fit: BoxFit.contain,
+        semanticLabel: 'Koru, el caracol de Korulab',
       ),
     );
     if (!widget.animar) return imagen;

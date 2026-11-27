@@ -32,6 +32,8 @@ dependencies:
 
   # Tipografía (Nunito)
   google_fonts: ^8.0.0
+  firebase_core: ^5.2.0
+  firebase_messaging: ^17.1.0
 
 dev_dependencies:
   flutter_test:

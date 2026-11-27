@@ -543,29 +543,42 @@ double velocidadGotas(int puntos) => 0.25 + 0.6 * (1 - exp(-puntos / 80));
 /// 100 → 0,66 (nunca baja de 0,45).
 double intervaloGotas(int puntos) => 0.45 + 0.75 * exp(-puntos / 80);
 
+/// Ancho de la planta que atrapa las gotas (fracción del ancho). Una gota
+/// cae dentro si está a menos de la mitad de este ancho de su centro.
+const anchoPlantaGotas = 0.22;
+
 /// Bordes por donde pueden caer las gotas (fracción del ancho).
 const _bordeIzquierdo = 0.06;
 const _bordeDerecho = 0.94;
 
+/// El agua no cae pegada a la orilla.
+const _bordeBuenaIzquierdo = 0.10;
+const _bordeBuenaDerecho = 0.90;
+
+/// Distancia entre el agua y la mala de una pareja: cerca, pero siempre con
+/// un hueco para atrapar el agua sin tocar la mala.
+const separacionParejaMinima = 0.24;
+const separacionParejaMaxima = 0.32;
+
 /// Separación mínima entre dos gotas buenas seguidas: crece con los puntos
-/// para obligar a moverse más. Puntos → separación: 0 → 0,15 · 10 → 0,22 ·
-/// 50 → 0,35 · 100 → 0,47 (nunca pasa de 0,6).
+/// para obligar a moverse más. Puntos → separación: 0 → 0,15 · 10 → 0,20 ·
+/// 50 → 0,28 · 100 → 0,36 (nunca pasa de 0,45).
 double separacionGotasBuenas(int puntos) =>
-    0.15 + 0.45 * (1 - exp(-puntos / 60));
+    0.15 + 0.30 * (1 - exp(-puntos / 60));
 
 /// Una gota que hay que soltar: tipo, posición horizontal y altura inicial
 /// (negativa = un poco por encima de la pantalla).
 typedef GotaNueva = ({TipoGota tipo, double x, double y});
 
 /// Curva que va de 0 a 1 a medida que suben los puntos (a partir de 2).
-/// Puntos → valor: 2 → 0 · 10 → 0,33 · 20 → 0,59 · 40 → 0,85.
-double _rampa(int puntos) => puntos < 2 ? 0 : 1 - exp(-(puntos - 2) / 20);
+/// Puntos → valor: 2 → 0 · 5 → 0,22 · 10 → 0,49 · 20 → 0,78 · 40 → 0,96.
+double _rampa(int puntos) => puntos < 2 ? 0 : 1 - exp(-(puntos - 2) / 12);
 
-/// Probabilidad de que una gota buena venga acompañada de una mala pegada.
-double probabilidadPareja(int puntos) => 0.40 * _rampa(puntos);
+/// Probabilidad de que el agua venga acompañada de una mala cercana.
+double probabilidadPareja(int puntos) => 0.50 * _rampa(puntos);
 
-/// Probabilidad de que, en vez de agua, caiga una gota mala sola.
-double probabilidadMalaSuelta(int puntos) => 0.30 * _rampa(puntos);
+/// Probabilidad de que, en vez de agua, caiga una mala sola.
+double probabilidadMalaSuelta(int puntos) => 0.45 * _rampa(puntos);
 
 /// Tipo de gota mala según los puntos: el aceite desde el principio, la
 /// lluvia ácida desde 10 y el petróleo desde 20 (las fuertes, más raras).
@@ -584,17 +597,31 @@ TipoGota tipoMalo(int puntos, Random azar) {
   return TipoGota.aceite;
 }
 
+/// ¿Se puede atrapar el agua en [buena] sin tocar la mala en [mala], si
+/// cayeran a la vez y con un [margen] cómodo para el dedo? (la planta no
+/// sale de la pantalla).
+bool parejaEsquivable(double buena, double mala, {double margen = 0.04}) {
+  const medio = anchoPlantaGotas / 2;
+  // Dónde puede estar la planta para atrapar el agua con holgura.
+  final desde = max(medio, buena - (medio - margen));
+  final hasta = min(1 - medio, buena + (medio - margen));
+  if (desde > hasta) return false;
+  // Lo mejor es el extremo más lejano de la mala.
+  final mejor = (mala - desde).abs() > (mala - hasta).abs() ? desde : hasta;
+  return (mala - mejor).abs() >= medio + margen;
+}
+
 /// Decide qué gotas soltar en este momento.
 ///
-/// * A veces cae una mala sola, muchas veces justo donde está [objetivo]
-///   (la gota buena más baja, a la que va el jugador).
-/// * Si no, cae agua (o, rara vez, agua dorada) lejos de [ultimaBuena], y a
-///   veces una mala pegada a ella: al mismo tiempo, un poco antes o un poco
-///   después, así no hay un patrón fijo que esquivar.
+/// * A veces cae una mala sola, casi siempre en el camino de la última gota
+///   de agua que apareció ([ultimaBuena]): llega justo después, cuando
+///   todavía estás ahí, y obliga a apartarse a tiempo.
+/// * Si no, cae agua (o, rara vez, agua dorada) lejos de la anterior y lejos
+///   de las orillas, y a veces una mala cerca de ella: a la vez, un poco
+///   antes o un poco después, pero siempre esquivable.
 List<GotaNueva> planearGotas({
   required int puntos,
   required double? ultimaBuena,
-  required double? objetivo,
   required Random azar,
 }) {
   double alAzar(double desde, double hasta) =>
@@ -602,8 +629,8 @@ List<GotaNueva> planearGotas({
   double dentro(double x) => x.clamp(_bordeIzquierdo, _bordeDerecho);
 
   if (azar.nextDouble() < probabilidadMalaSuelta(puntos)) {
-    final x = objetivo != null && azar.nextBool()
-        ? dentro(objetivo + alAzar(-0.08, 0.08))
+    final x = ultimaBuena != null && azar.nextDouble() < 0.65
+        ? dentro(ultimaBuena + alAzar(-0.06, 0.06))
         : alAzar(_bordeIzquierdo, _bordeDerecho);
     return [(tipo: tipoMalo(puntos, azar), x: x, y: -0.05)];
   }
@@ -617,37 +644,40 @@ List<GotaNueva> planearGotas({
   );
   if (azar.nextDouble() >= probabilidadPareja(puntos)) return [buena];
 
-  // Mala pegada a la buena, a un lado, más arriba o más abajo.
-  final lado = azar.nextBool() ? 1 : -1;
-  var x = buena.x + lado * alAzar(0.07, 0.13);
-  if (x < _bordeIzquierdo || x > _bordeDerecho) {
-    x = buena.x - lado * alAzar(0.07, 0.13);
+  // Mala cercana a un lado con espacio (y esquivable).
+  final distancia = alAzar(separacionParejaMinima, separacionParejaMaxima);
+  final lados = [1, -1]..shuffle(azar);
+  for (final lado in lados) {
+    final x = buena.x + lado * distancia;
+    if (x >= _bordeIzquierdo &&
+        x <= _bordeDerecho &&
+        parejaEsquivable(buena.x, x)) {
+      return [
+        buena,
+        (tipo: tipoMalo(puntos, azar), x: x, y: -0.05 + alAzar(-0.12, 0.08)),
+      ];
+    }
   }
-  return [
-    buena,
-    (
-      tipo: tipoMalo(puntos, azar),
-      x: dentro(x),
-      y: -0.05 + alAzar(-0.12, 0.08),
-    ),
-  ];
+  return [buena];
 }
 
-/// Posición de una gota buena: al menos [separacionGotasBuenas] lejos de la
-/// anterior buena.
+/// Posición del agua: al menos [separacionGotasBuenas] lejos de la anterior,
+/// sin pegarse a las orillas.
 double _lejosDe(double? ultimaBuena, int puntos, Random azar) {
   double alAzar(double desde, double hasta) =>
       desde + azar.nextDouble() * (hasta - desde);
-  if (ultimaBuena == null) return alAzar(_bordeIzquierdo, _bordeDerecho);
+  if (ultimaBuena == null) {
+    return alAzar(_bordeBuenaIzquierdo, _bordeBuenaDerecho);
+  }
   final sep = separacionGotasBuenas(puntos);
-  final izquierda = max((ultimaBuena - sep) - _bordeIzquierdo, 0.0);
-  final derecha = max(_bordeDerecho - (ultimaBuena + sep), 0.0);
+  final izquierda = max((ultimaBuena - sep) - _bordeBuenaIzquierdo, 0.0);
+  final derecha = max(_bordeBuenaDerecho - (ultimaBuena + sep), 0.0);
   if (izquierda == 0 && derecha == 0) {
-    // No cabe la separación completa: al borde más lejano.
-    return ultimaBuena < 0.5 ? _bordeDerecho : _bordeIzquierdo;
+    // No cabe la separación completa: hacia el lado con más espacio.
+    return ultimaBuena < 0.5 ? _bordeBuenaDerecho : _bordeBuenaIzquierdo;
   }
   if (azar.nextDouble() * (izquierda + derecha) < izquierda) {
-    return alAzar(_bordeIzquierdo, ultimaBuena - sep);
+    return alAzar(_bordeBuenaIzquierdo, ultimaBuena - sep);
   }
-  return alAzar(ultimaBuena + sep, _bordeDerecho);
+  return alAzar(ultimaBuena + sep, _bordeBuenaDerecho);
 }

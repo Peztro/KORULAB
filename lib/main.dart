@@ -4,6 +4,7 @@ import 'paginas/pagina_inicio.dart';
 import 'paginas/pagina_login.dart';
 import 'pagina_bienvenida.dart';
 import 'servicios/koru_controlador.dart';
+import 'servicios/servicio_push.dart';
 import 'tema/preferencia_tema.dart';
 import 'widgets/koru_mascota.dart';
 import 'tema/tema_korulab.dart';
@@ -13,6 +14,8 @@ Future<void> main() async {
   await DBService.init();
   await PreferenciaTema.instancia.cargar();
   await KoruControlador.instancia.cargarPreferencias();
+  // Notificaciones push (no bloquea si Firebase falla).
+  await ServicioPush.iniciar();
   runApp(const KoruApp());
 }
 

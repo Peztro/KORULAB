@@ -5,9 +5,17 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
     <application
-        android:label="korulab"
+        android:label="Korulab"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
+        <!-- Notificaciones push (Firebase): mismo canal e ícono que las
+             notificaciones que muestra la app cuando está abierta. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="messages" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/launcher_icon" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -1,4 +1,4 @@
-package com.example.korulab
+package com.korulab.app
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

@@ -6,6 +6,7 @@ import '../servicio_bd.dart';
 import '../modelos/imagen_perfil.dart';
 import '../modelos/perfil.dart';
 import '../servicios/servicio_chat.dart';
+import '../servicios/servicio_push.dart';
 import '../servicios/sesion_actual.dart';
 import '../paginas/pagina_diverkoru.dart';
 import '../paginas/pagina_mensajes.dart';
@@ -16,7 +17,6 @@ import '../widgets/ui_koru.dart';
 import '../modelos/modelos_discusion.dart';
 import '../servicio_notificaciones.dart';
 import '../paginas/pagina_discusion.dart';
-import '../paginas/pagina_retos_ecologicos.dart';
 import '../paginas/pagina_login.dart';
 import '../paginas/pagina_tienda.dart';
 import '../paginas/pagina_ruta_eko.dart';
@@ -30,7 +30,9 @@ import '../widgets/mascota_flotante.dart';
 import '../widgets/mascota_guia.dart';
 import '../servicios/koru_controlador.dart';
 import '../servicios/servicio_biometrico.dart';
+import '../widgets/boton_chats.dart';
 import '../widgets/boton_inicio.dart';
+import '../widgets/explora_inicio.dart';
 
 // Página principal del usuario - muestra lecciones, actividades especiales y progreso
 class HomePage extends StatefulWidget {
@@ -100,6 +102,8 @@ class _HomePageState extends State<HomePage> {
     );
     _controlesDeEntrada();
     unawaited(NotificationService.startListening(_currentUsername));
+    // Este teléfono recibirá las notificaciones aunque la app esté cerrada.
+    unawaited(ServicioPush.registrar());
   }
 
   @override
@@ -397,10 +401,37 @@ class _HomePageState extends State<HomePage> {
       debugPrint('No se pudieron contar los chats sin leer: $e');
     }
     if (!mounted) return;
+    final antes = _chatsSinLeer;
+    final primeraVez = !_chatsContados;
+    _chatsContados = true;
     setState(() {
       _pendientesMensajes = p.solicitudes + p.noLeidos;
       _solicitudesAmistad = p.solicitudes;
       _chatsSinLeer = chatsSinLeer;
+    });
+    if (chatsSinLeer > antes) _avisarMensajesConKoru(chatsSinLeer, primeraVez);
+  }
+
+  /// Ya se contaron los chats sin leer al menos una vez.
+  bool _chatsContados = false;
+
+  /// Koru avisa de los mensajes sin leer; tocar su globo abre los chats.
+  /// Al abrir la app espera a que termine el saludo.
+  void _avisarMensajesConKoru(int chats, bool primeraVez) {
+    if (_role != DBService.roleStudent) return;
+    final nombre = _currentDisplayName.trim().split(RegExp(r'\s+')).first;
+    Future.delayed(Duration(seconds: primeraVez ? 8 : 0), () {
+      if (!mounted) return;
+      unawaited(
+        KoruControlador.instancia.reaccionar(
+          EventoKoru.mensajeNuevo,
+          datos: {
+            'chats': chats == 1 ? '1 chat' : '$chats chats',
+            'nombre': nombre.startsWith('@') ? '' : nombre,
+          },
+          importante: true,
+        ),
+      );
     });
   }
 
@@ -524,7 +555,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildLessonsSection(ThemeData theme) {
-    final koru = context.koru;
     return ListView(
       // Abajo deja sitio para Koru, que flota en la esquina.
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
@@ -532,47 +562,15 @@ class _HomePageState extends State<HomePage> {
         _buildWelcomeHero(theme),
         const SizedBox(height: 16),
         _avisoReciente(),
+        // Lo primero que se ve: qué hacer ahora, con tus datos.
+        const SectionTitle('¿Qué hacemos hoy?'),
+        ExploraInicio(
+          username: _currentUsername,
+          onAbrirDiverKoru: () => _onItemTapped(2),
+        ),
+        const SizedBox(height: 20),
+        // El progreso es para consultar: va después y empieza plegado.
         ProgressCard(username: _currentUsername),
-        const SizedBox(height: 12),
-        const SectionTitle('Explora'),
-        FeatureCard(
-          title: 'Ruta Eko',
-          subtitle: 'Un sendero de aprendizaje sobre sostenibilidad',
-          icon: Icons.route_rounded,
-          color: koru.hoja,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => RutaEkoPage(username: _currentUsername),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        FeatureCard(
-          title: 'Retos ekológicos',
-          subtitle: 'Pequeñas acciones para el día a día',
-          icon: Icons.emoji_events_rounded,
-          color: koru.agua,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => EcoChallengesPage(username: _currentUsername),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        FeatureCard(
-          title: 'Tienda',
-          subtitle: 'Canjea ekostrellas y revisa tu inventario',
-          icon: Icons.storefront_rounded,
-          color: koru.oro,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => RewardShopPage(username: _currentUsername),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -1678,7 +1676,13 @@ class _HomePageState extends State<HomePage> {
     return Stack(
       children: [
         Positioned.fill(child: contenido),
-        const Positioned(right: 16, bottom: 16, child: MascotaFlotante()),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: MascotaFlotante(
+            acciones: {EventoKoru.mensajeNuevo: _openMessages},
+          ),
+        ),
       ],
     );
   }
@@ -1784,49 +1788,28 @@ class _HomePageState extends State<HomePage> {
           filterQuality: FilterQuality.high,
         ),
         actions: [
+          // La racha ya se ve en la tarjeta de bienvenida; aquí quedan
+          // las ekostrellas (abren la tienda) y los chats.
           if (_isRoleLoaded && isStudent)
-            AnimatedBuilder(
-              animation: progressStats,
-              builder: (context, _) => Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  StatPill(
-                    icon: Icons.local_fire_department_rounded,
-                    value: '${progressStats.dailyStreak}',
-                    color: context.koru.fuego,
-                    tooltip: 'Racha diaria: ${progressStats.dailyStreak} días',
-                  ),
-                  const SizedBox(width: 6),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: _openRewardShop,
-                    child: StatPill(
-                      icon: Icons.star_rounded,
-                      value: '${progressStats.ekostrellas}',
-                      color: context.koru.oro,
-                      tooltip:
-                          '${progressStats.ekostrellas} ekostrellas · Abrir tienda',
-                    ),
-                  ),
-                ],
+            ListenableBuilder(
+              listenable: progressStats,
+              builder: (context, _) => InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: _openRewardShop,
+                child: StatPill(
+                  icon: Icons.star_rounded,
+                  value: '${progressStats.ekostrellas}',
+                  color: context.koru.oro,
+                  tooltip:
+                      '${progressStats.ekostrellas} ekostrellas · Abrir tienda',
+                ),
               ),
             ),
-          if (_isRoleLoaded)
-            IconButton(
-              tooltip: _chatsSinLeer == 0
-                  ? 'Mensajes'
-                  : 'Mensajes · $_chatsSinLeer '
-                        '${_chatsSinLeer == 1 ? 'chat' : 'chats'} sin leer',
-              onPressed: _openMessages,
-              icon: Badge(
-                isLabelVisible: _chatsSinLeer > 0,
-                label: Text(_chatsSinLeer > 9 ? '9+' : '$_chatsSinLeer'),
-                backgroundColor: context.koru.hoja,
-                textColor: theme.colorScheme.onPrimary,
-                child: const Icon(Icons.chat_bubble_outline_rounded),
-              ),
-            ),
-          const SizedBox(width: 8),
+          if (_isRoleLoaded) ...[
+            const SizedBox(width: 10),
+            BotonChats(sinLeer: _chatsSinLeer, onTap: _openMessages),
+          ],
+          const SizedBox(width: 12),
         ],
       ),
       body: _conKoru(

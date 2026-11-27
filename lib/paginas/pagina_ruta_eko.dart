@@ -562,3 +562,79 @@ class _TeacherLessonPage extends StatelessWidget {
     );
   }
 }
+
+/// Estado de una unidad del sendero, para dibujar el mini sendero.
+enum EstadoUnidadRuta { completada, actual, bloqueada }
+
+/// Resumen del sendero de Ruta Eko para la página de inicio.
+///
+/// Usa las mismas unidades, orden y reglas de desbloqueo que la Ruta Eko.
+/// El avance se calcula al momento (con [progressStats]), así se actualiza
+/// solo al completar actividades.
+class SenderoResumen {
+  SenderoResumen._(this._unidades);
+
+  final List<_RutaEkoTrailUnit> _unidades;
+
+  int get total => _unidades.length;
+  int get completadas => _unidades.where((u) => u.isCompleted).length;
+
+  /// Posición (desde 0) de la primera unidad sin completar, o null si ya
+  /// está todo hecho.
+  int? get indiceActual {
+    final i = _unidades.indexWhere((u) => !u.isCompleted);
+    return i < 0 ? null : i;
+  }
+
+  bool get terminado => total > 0 && indiceActual == null;
+
+  List<EstadoUnidadRuta> get estados {
+    final actual = indiceActual;
+    return [
+      for (final (i, u) in _unidades.indexed)
+        u.isCompleted
+            ? EstadoUnidadRuta.completada
+            : i == actual
+            ? EstadoUnidadRuta.actual
+            : EstadoUnidadRuta.bloqueada,
+    ];
+  }
+
+  String? get tituloActual {
+    final i = indiceActual;
+    if (i == null) return null;
+    final u = _unidades[i];
+    return u.course?.title ?? (u.row['title'] as String?) ?? 'Lección';
+  }
+
+  /// Unidad actual cuando es una unidad con actividades (para abrirla
+  /// directo); null si es una lección de profe o ya terminó.
+  Course? get cursoActual {
+    final i = indiceActual;
+    return i == null ? null : _unidades[i].course;
+  }
+
+  /// Actividades hechas y totales de la unidad actual.
+  (int, int) get avanceActual {
+    final curso = cursoActual;
+    if (curso == null) return (0, 0);
+    return (
+      curso.activities.where(progressStats.isActivityCompleted).length,
+      curso.activities.length,
+    );
+  }
+}
+
+/// Carga el resumen del sendero de [username].
+Future<SenderoResumen> cargarSenderoResumen(String username) async {
+  final lecciones = await loadManageableLessons(
+    username,
+    DBService.lessonDestinationKoruclases,
+  );
+  final cursos = await loadManageableCourses(username);
+  final unidades = <_RutaEkoTrailUnit>[
+    for (final row in cursos) _RutaEkoTrailUnit.course(courseFromRow(row), row),
+    for (final row in lecciones) _RutaEkoTrailUnit.lesson(row),
+  ]..sort(_compareRutaEkoUnits);
+  return SenderoResumen._(unidades);
+}

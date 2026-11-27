@@ -161,17 +161,21 @@ void main() {
 
   group('Planear gotas', () {
     // Cuenta qué sale en muchas tiradas.
-    ({int buenas, int malas, int doradas, int parejas}) muestra(int puntos) {
+    ({
+      int buenas,
+      int malas,
+      int doradas,
+      int parejas,
+      double minBuena,
+      double maxBuena,
+    })
+    muestra(int puntos) {
       final azar = Random(5);
       var buenas = 0, malas = 0, doradas = 0, parejas = 0;
+      var minBuena = 1.0, maxBuena = 0.0;
       double? ultima;
       for (var i = 0; i < 4000; i++) {
-        final g = planearGotas(
-          puntos: puntos,
-          ultimaBuena: ultima,
-          objetivo: 0.5,
-          azar: azar,
-        );
+        final g = planearGotas(puntos: puntos, ultimaBuena: ultima, azar: azar);
         if (g.length == 2) parejas++;
         for (final n in g) {
           expect(n.x, inInclusiveRange(0.06, 0.94));
@@ -180,11 +184,20 @@ void main() {
           } else {
             buenas++;
             if (n.tipo == TipoGota.dorada) doradas++;
+            minBuena = min(minBuena, n.x);
+            maxBuena = max(maxBuena, n.x);
             ultima = n.x;
           }
         }
       }
-      return (buenas: buenas, malas: malas, doradas: doradas, parejas: parejas);
+      return (
+        buenas: buenas,
+        malas: malas,
+        doradas: doradas,
+        parejas: parejas,
+        minBuena: minBuena,
+        maxBuena: maxBuena,
+      );
     }
 
     test('al empezar solo cae agua', () {
@@ -193,30 +206,48 @@ void main() {
       expect(m.doradas, 0);
     });
 
-    test('con puntos hay muchas malas y pocas doradas', () {
-      final m = muestra(40);
-      expect(m.malas / (m.buenas + m.malas), greaterThan(0.3));
-      expect(m.parejas, greaterThan(0));
-      expect(m.doradas / m.buenas, lessThan(0.03));
+    test('con puntos hay casi tantas malas como buenas', () {
+      final m = muestra(20);
+      expect(m.malas / m.buenas, greaterThan(0.75));
+      final m40 = muestra(40);
+      expect(m40.malas / m40.buenas, greaterThan(0.85));
+      expect(m40.parejas, greaterThan(0));
+      expect(m40.doradas / m40.buenas, lessThan(0.03));
     });
 
-    test('la mala de una pareja cae pegada a la buena', () {
+    test('el agua no cae pegada a las orillas', () {
+      final m = muestra(100);
+      expect(m.minBuena, greaterThanOrEqualTo(0.10));
+      expect(m.maxBuena, lessThanOrEqualTo(0.90));
+    });
+
+    test('toda pareja se puede esquivar', () {
       final azar = Random(9);
-      for (var i = 0; i < 500; i++) {
-        final g = planearGotas(
-          puntos: 60,
-          ultimaBuena: 0.5,
-          objetivo: null,
-          azar: azar,
-        );
+      var vistas = 0;
+      double? ultima;
+      for (var i = 0; i < 5000; i++) {
+        final g = planearGotas(puntos: 60, ultimaBuena: ultima, azar: azar);
+        final buena = g.firstWhere((n) => !n.tipo.esMala, orElse: () => g[0]);
+        if (!buena.tipo.esMala) ultima = buena.x;
         if (g.length != 2) continue;
-        expect((g[0].x - g[1].x).abs(), lessThanOrEqualTo(0.13 + 1e-9));
+        vistas++;
+        final d = (g[0].x - g[1].x).abs();
+        expect(d, greaterThanOrEqualTo(separacionParejaMinima - 1e-9));
+        expect(d, lessThanOrEqualTo(separacionParejaMaxima + 1e-9));
+        expect(parejaEsquivable(g[0].x, g[1].x), isTrue);
       }
+      expect(vistas, greaterThan(500));
+    });
+
+    test('parejaEsquivable detecta las imposibles', () {
+      expect(parejaEsquivable(0.5, 0.55), isFalse);
+      expect(parejaEsquivable(0.5, 0.78), isTrue);
+      expect(parejaEsquivable(0.1, 0.34), isTrue);
     });
 
     test('las buenas se separan más con los puntos', () {
       expect(separacionGotasBuenas(0), lessThan(separacionGotasBuenas(50)));
-      expect(separacionGotasBuenas(1000), lessThanOrEqualTo(0.6));
+      expect(separacionGotasBuenas(1000), lessThanOrEqualTo(0.45));
     });
   });
 

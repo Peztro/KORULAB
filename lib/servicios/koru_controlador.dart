@@ -16,6 +16,9 @@ enum EventoKoru {
   leccionPracticar,
   avisoNuevo,
 
+  /// Llegaron mensajes sin leer. Tocar el globo abre los chats.
+  mensajeNuevo,
+
   /// Al tocar a Koru: un consejo ecológico.
   consejo,
 }
@@ -23,10 +26,14 @@ enum EventoKoru {
 /// Lo que Koru dice y la cara que pone.
 @immutable
 class MensajeKoru {
-  const MensajeKoru(this.texto, this.emocion);
+  const MensajeKoru(this.texto, this.emocion, {this.evento});
 
   final String texto;
   final EmocionKoru emocion;
+
+  /// Por qué lo dijo. Permite que tocar el globo haga algo (por ejemplo,
+  /// abrir los chats en [EventoKoru.mensajeNuevo]).
+  final EventoKoru? evento;
 }
 
 /// De dónde salen las frases de Koru.
@@ -81,6 +88,20 @@ class CatalogoFrasesKoru implements FuenteFrasesKoru {
     EventoKoru.avisoNuevo: [
       ('¡Psst! Hay un aviso nuevo arriba 📣', EmocionKoru.feliz),
     ],
+    EventoKoru.mensajeNuevo: [
+      (
+        '¡Tienes {chats} con mensajes nuevos! Tócame aquí para leerlos 💬',
+        EmocionKoru.saludando,
+      ),
+      (
+        '¡Psst, {nombre}! Te escribieron 📨 Toca aquí para ver tus chats.',
+        EmocionKoru.feliz,
+      ),
+      (
+        'Llegó un mensaje para ti 💌 ¿Lo vemos? Toca aquí.',
+        EmocionKoru.saludando,
+      ),
+    ],
     EventoKoru.consejo: [
       (
         'Cierra el grifo mientras te cepillas: ahorras varios litros cada vez 💧',
@@ -111,6 +132,8 @@ class CatalogoFrasesKoru implements FuenteFrasesKoru {
         'Plantar un árbol da sombra, oxígeno y hogar a muchos animales 🌳',
         EmocionKoru.leyendo,
       ),
+      ('tengo hambre', EmocionKoru.leyendo),
+      ('tengo sed', EmocionKoru.leyendo),
     ],
   };
 
@@ -242,7 +265,7 @@ class KoruControlador extends ChangeNotifier {
     }
     if (frase == null) return;
     decir(
-      frase,
+      MensajeKoru(frase.texto, frase.emocion, evento: evento),
       duracion: evento == EventoKoru.consejo
           ? const Duration(seconds: 9)
           : const Duration(seconds: 7),

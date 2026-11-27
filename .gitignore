@@ -49,3 +49,6 @@ app.*.map.json
 
 # Diferencias de pruebas visuales fallidas (se generan solas)
 test/visual/failures/
+
+# Configuración de Firebase (no se sube al repositorio)
+/android/app/google-services.json

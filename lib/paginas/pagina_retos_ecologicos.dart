@@ -15,6 +15,9 @@ class EcoChallengesPage extends StatefulWidget {
 
   const EcoChallengesPage({super.key, required this.username});
 
+  /// Cuántos retos hay para hacer (se muestra en el inicio).
+  static int get cantidadRetos => _EcoChallengesPageState._challenges.length;
+
   @override
   State<EcoChallengesPage> createState() => _EcoChallengesPageState();
 }
