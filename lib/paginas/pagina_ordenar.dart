@@ -6,6 +6,7 @@ import '../servicio_comentarios.dart';
 import '../modelos/modelos_curso.dart';
 import '../paginas/pagina_curso.dart';
 import '../servicios/estadisticas_progreso.dart';
+import '../widgets/boton_inicio.dart';
 
 // ─────────────────────────────────────────────
 //  5. SORTING / ORDERING PROCESS PAGE
@@ -112,7 +113,10 @@ class _SortingPageState extends State<SortingPage> {
     final theme = Theme.of(context);
     final koru = context.koru;
     return Scaffold(
-      appBar: AppBar(title: Text(widget.activity.title)),
+      appBar: AppBar(
+        title: Text(widget.activity.title),
+        actions: const [BotonInicio()],
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),

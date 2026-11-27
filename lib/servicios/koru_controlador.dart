@@ -84,32 +84,32 @@ class CatalogoFrasesKoru implements FuenteFrasesKoru {
     EventoKoru.consejo: [
       (
         'Cierra el grifo mientras te cepillas: ahorras varios litros cada vez 💧',
-        EmocionKoru.pensando,
+        EmocionKoru.leyendo,
       ),
-      ('Apaga la luz al salir de una habitación 💡', EmocionKoru.pensando),
+      ('Apaga la luz al salir de una habitación 💡', EmocionKoru.leyendo),
       (
         'Una botella reutilizable evita cientos de botellas de plástico al año ♻️',
-        EmocionKoru.feliz,
+        EmocionKoru.leyendo,
       ),
       (
         'Separar papel, plástico y orgánico ayuda muchísimo al reciclaje 🗑️',
-        EmocionKoru.pensando,
+        EmocionKoru.leyendo,
       ),
       (
         'Caminar o ir en bici en trayectos cortos limpia el aire 🚲',
-        EmocionKoru.feliz,
+        EmocionKoru.leyendo,
       ),
       (
         'Desconecta los cargadores que no uses: siguen gastando energía 🔌',
-        EmocionKoru.pensando,
+        EmocionKoru.leyendo,
       ),
       (
         'Las abejas polinizan gran parte de lo que comemos. ¡Cuidémoslas! 🐝',
-        EmocionKoru.feliz,
+        EmocionKoru.leyendo,
       ),
       (
         'Plantar un árbol da sombra, oxígeno y hogar a muchos animales 🌳',
-        EmocionKoru.feliz,
+        EmocionKoru.leyendo,
       ),
     ],
   };

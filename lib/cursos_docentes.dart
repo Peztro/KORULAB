@@ -6,6 +6,7 @@ import 'servicio_bd.dart';
 import 'datos/catalogo_cursos.dart';
 import 'modelos/modelos_curso.dart';
 import 'servicios/estadisticas_progreso.dart';
+import 'widgets/boton_inicio.dart';
 
 const _typeLabels = {
   'quiz': 'Quiz de opción múltiple',
@@ -396,7 +397,10 @@ class _TeacherCourseEditorPageState extends State<TeacherCourseEditorPage> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(title: Text(_isEditing ? 'Editar curso' : 'Crear curso')),
+      appBar: AppBar(
+        title: Text(_isEditing ? 'Editar curso' : 'Crear curso'),
+        actions: const [BotonInicio()],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -729,7 +733,10 @@ class _ActivityEditorPageState extends State<ActivityEditorPage> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(title: Text(_typeLabels[widget.type] ?? 'Actividad')),
+      appBar: AppBar(
+        title: Text(_typeLabels[widget.type] ?? 'Actividad'),
+        actions: const [BotonInicio()],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

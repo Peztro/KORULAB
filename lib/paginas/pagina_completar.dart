@@ -6,6 +6,7 @@ import '../servicio_comentarios.dart';
 import '../modelos/modelos_curso.dart';
 import '../paginas/pagina_curso.dart';
 import '../servicios/estadisticas_progreso.dart';
+import '../widgets/boton_inicio.dart';
 
 // ─────────────────────────────────────────────
 //  4. FILL IN THE BLANK PAGE
@@ -137,7 +138,10 @@ class _FillBlankPageState extends State<FillBlankPage> {
 
   Widget _buildScaffold(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.activity.title)),
+      appBar: AppBar(
+        title: Text(widget.activity.title),
+        actions: const [BotonInicio()],
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),

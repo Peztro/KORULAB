@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../servicio_bd.dart';
 import '../tema/tema_korulab.dart';
 import '../widgets/ui_koru.dart';
+import '../widgets/boton_inicio.dart';
 
 // ─────────────────────────────────────────────
 //  COURSE CARD
@@ -77,7 +78,10 @@ class _EcoChallengesPageState extends State<EcoChallengesPage> {
     final theme = Theme.of(context);
     final koru = context.koru;
     return Scaffold(
-      appBar: AppBar(title: const Text('Retos ekológicos')),
+      appBar: AppBar(
+        title: const Text('Retos ekológicos'),
+        actions: const [BotonInicio()],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         children: [
@@ -421,7 +425,10 @@ class _EcoChallengeJournalPageState extends State<EcoChallengeJournalPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Diario del reto')),
+      appBar: AppBar(
+        title: const Text('Diario del reto'),
+        actions: const [BotonInicio()],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addEntry,
         icon: const Icon(Icons.add),

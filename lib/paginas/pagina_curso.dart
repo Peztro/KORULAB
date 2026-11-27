@@ -13,6 +13,8 @@ import '../paginas/pagina_memoria.dart';
 import '../paginas/pagina_quiz.dart';
 import '../paginas/pagina_ordenar.dart';
 import '../servicios/estadisticas_progreso.dart';
+import '../widgets/boton_inicio.dart';
+import '../widgets/boton_tienda.dart';
 
 String _activityLabel(ActivityType t) {
   switch (t) {
@@ -83,7 +85,10 @@ class CoursePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Unidad')),
+      appBar: AppBar(
+        title: const Text('Unidad'),
+        actions: const [BotonTienda(), BotonInicio()],
+      ),
       body: AnimatedBuilder(
         animation: progressStats,
         builder: (context, _) {
@@ -629,6 +634,8 @@ class _ResultScreenState extends State<ResultScreen>
                                 child: const Text('Volver a la unidad'),
                               ),
                       ),
+                      const SizedBox(height: 4),
+                      const BotonIrAlInicio(),
                     ],
                   ),
                 ),

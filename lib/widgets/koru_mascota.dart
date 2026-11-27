@@ -3,7 +3,17 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// Emociones de Koru, el caracol de Korulab.
-enum EmocionKoru { saludando, feliz, celebrando, pensando, animando, durmiendo }
+enum EmocionKoru {
+  saludando,
+  feliz,
+  celebrando,
+  pensando,
+  animando,
+  durmiendo,
+  jugando,
+  leyendo,
+  tendero,
+}
 
 /// Observa la navegación para saber si una pantalla está visible.
 /// Se registra en `MaterialApp.navigatorObservers`.
@@ -38,12 +48,21 @@ class KoruMascota extends StatefulWidget {
     EmocionKoru.pensando: 'assets/images/koru_base.png',
     EmocionKoru.animando: 'assets/images/koru_base.png',
     EmocionKoru.durmiendo: 'assets/images/koru_base.png',
+    // Gorra y mando: sección DiverKoru.
+    EmocionKoru.jugando: 'assets/images/koru_mando.png',
+    // Gorra y libro: cuando da un consejo.
+    EmocionKoru.leyendo: 'assets/images/koru_leyendo.png',
+    // Gorra, delantal y manzana: atiende la tienda.
+    EmocionKoru.tendero: 'assets/images/koru_tienda.png',
   };
 
   /// Poses que ya vienen dibujadas con línea de contorno: no necesitan el
   /// contorno automático del tema claro.
   static const Set<String> _conLineaPropia = {
     'assets/images/koru_celebrando.png',
+    'assets/images/koru_mando.png',
+    'assets/images/koru_leyendo.png',
+    'assets/images/koru_tienda.png',
   };
 
   static String imagen(EmocionKoru emocion) => _imagenes[emocion]!;
@@ -188,6 +207,12 @@ class _KoruMascotaState extends State<KoruMascota>
           EmocionKoru.animando => (-s * 0.03 * t, (t - 0.5) * 0.1, 1.0),
           // Respira.
           EmocionKoru.durmiendo => (0.0, 0.0, 0.97 + 0.03 * t),
+          // Se mueve un poco, concentrado en el juego.
+          EmocionKoru.jugando => (-s * 0.03 * t, (t - 0.5) * 0.06, 1.0),
+          // Lee tranquilo, flotando apenas.
+          EmocionKoru.leyendo => (-s * 0.02 * t, -0.03 * t, 1.0),
+          // Saluda a los clientes, balanceándose.
+          EmocionKoru.tendero => (-s * 0.03 * t, (t - 0.5) * 0.12, 1.0),
         };
         return Transform.translate(
           offset: Offset(0, dy),

@@ -12,6 +12,7 @@ import '../servicios/servicio_chat.dart';
 import '../tema/tema_korulab.dart';
 import '../widgets/selector_emojis.dart';
 import '../widgets/ui_koru.dart';
+import '../widgets/boton_inicio.dart';
 
 String _hora(DateTime fecha) {
   final ahora = DateTime.now();
@@ -205,6 +206,7 @@ class _MensajesPageState extends State<MensajesPage>
             const Tab(text: 'Avisos'),
           ],
         ),
+        actions: const [BotonInicio()],
       ),
       floatingActionButton: _tabs.index == 2
           ? null
@@ -778,7 +780,10 @@ class _AnadirAmigoPageState extends State<AnadirAmigoPage> {
     final theme = Theme.of(context);
     final texto = _busqueda.text.trim();
     return Scaffold(
-      appBar: AppBar(title: const Text('Añadir amigo')),
+      appBar: AppBar(
+        title: const Text('Añadir amigo'),
+        actions: const [BotonInicio()],
+      ),
       body: Column(
         children: [
           Padding(
@@ -852,7 +857,10 @@ class ProfesoresPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Escribir a un profesor')),
+      appBar: AppBar(
+        title: const Text('Escribir a un profesor'),
+        actions: const [BotonInicio()],
+      ),
       body: FutureBuilder<List<Contacto>>(
         future: ServicioChat.profesores(),
         builder: (context, snapshot) {
@@ -1119,6 +1127,7 @@ class _ChatPageState extends State<ChatPage> {
               ),
             ],
           ),
+          actions: const [BotonInicio()],
         ),
         body: Column(
           children: [
@@ -1509,6 +1518,7 @@ class _ImagenCompleta extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        actions: const [BotonInicio()],
       ),
       body: Center(
         child: InteractiveViewer(

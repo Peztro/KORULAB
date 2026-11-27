@@ -10,6 +10,8 @@ import '../cursos_docentes.dart';
 import '../paginas/pagina_curso.dart';
 import '../tema/tema_korulab.dart';
 import '../widgets/sendero.dart';
+import '../widgets/boton_inicio.dart';
+import '../widgets/boton_tienda.dart';
 
 class RutaEkoPage extends StatefulWidget {
   final String username;
@@ -144,7 +146,13 @@ class _RutaEkoPageState extends State<RutaEkoPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Ruta Eko')),
+      appBar: AppBar(
+        title: const Text('Ruta Eko'),
+        actions: [
+          BotonTienda(username: widget.username),
+          const BotonInicio(),
+        ],
+      ),
       body: AnimatedBuilder(
         animation: progressStats,
         builder: (context, _) {
@@ -502,7 +510,10 @@ class _TeacherLessonPage extends StatelessWidget {
     final lessonId = lesson['id'] as int;
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(title: Text(lesson['title'] as String)),
+      appBar: AppBar(
+        title: Text(lesson['title'] as String),
+        actions: const [BotonInicio()],
+      ),
       body: AnimatedBuilder(
         animation: progressStats,
         builder: (context, _) {

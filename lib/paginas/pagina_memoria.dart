@@ -8,6 +8,7 @@ import '../servicio_comentarios.dart';
 import '../modelos/modelos_curso.dart';
 import '../paginas/pagina_curso.dart';
 import '../servicios/estadisticas_progreso.dart';
+import '../widgets/boton_inicio.dart';
 
 // ─────────────────────────────────────────────
 //  3. MEMORY CARD GAME PAGE
@@ -123,7 +124,10 @@ class _MemoryPageState extends State<MemoryPage> {
     final found = cardItems.where((c) => c.isMatched).length ~/ 2;
     final totalPairs = cardItems.length ~/ 2;
     return Scaffold(
-      appBar: AppBar(title: Text(widget.activity.title)),
+      appBar: AppBar(
+        title: Text(widget.activity.title),
+        actions: const [BotonInicio()],
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),

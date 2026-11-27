@@ -6,6 +6,7 @@ import '../servicio_comentarios.dart';
 import '../modelos/modelos_curso.dart';
 import '../paginas/pagina_curso.dart';
 import '../servicios/estadisticas_progreso.dart';
+import '../widgets/boton_inicio.dart';
 
 // ─────────────────────────────────────────────
 //  2. MATCHING PAGE
@@ -106,7 +107,10 @@ class _MatchingPageState extends State<MatchingPage> {
   Widget _buildScaffold(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(widget.activity.title)),
+      appBar: AppBar(
+        title: Text(widget.activity.title),
+        actions: const [BotonInicio()],
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),

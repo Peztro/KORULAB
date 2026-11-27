@@ -14,6 +14,7 @@ import 'tema/tema_korulab.dart';
 import 'widgets/ui_koru.dart';
 import 'modelos/modelos_curso.dart';
 import 'cursos_docentes.dart' show decodeActivities;
+import 'widgets/boton_inicio.dart';
 
 class _SupportLoadingIndicator extends StatelessWidget {
   const _SupportLoadingIndicator();
@@ -58,7 +59,10 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Ajustes')),
+      appBar: AppBar(
+        title: const Text('Ajustes'),
+        actions: const [BotonInicio()],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
@@ -408,7 +412,10 @@ class _SupportRequestPageState extends State<SupportRequestPage> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(title: const Text('Enviar PQRS')),
+      appBar: AppBar(
+        title: const Text('Enviar PQRS'),
+        actions: const [BotonInicio()],
+      ),
       body: _isLoading
           ? const _SupportLoadingIndicator()
           : Form(
@@ -680,6 +687,7 @@ class _SupportReviewPageState extends State<SupportReviewPage> {
               onPressed: _isLoading ? null : _loadRequests,
               icon: const Icon(Icons.refresh),
             ),
+            const BotonInicio(),
           ],
         ),
         body: _isLoading
@@ -1066,6 +1074,7 @@ class _MessagesPageState extends State<MessagesPage> {
             onPressed: _isLoading ? null : _loadMessages,
             icon: const Icon(Icons.refresh),
           ),
+          const BotonInicio(),
         ],
       ),
       body: content,
@@ -1132,7 +1141,10 @@ class _BroadcastMessagePageState extends State<BroadcastMessagePage> {
     final titulo = _titleController.text.trim();
     final mensaje = _messageController.text.trim();
     return Scaffold(
-      appBar: AppBar(title: const Text('Publicar aviso')),
+      appBar: AppBar(
+        title: const Text('Publicar aviso'),
+        actions: const [BotonInicio()],
+      ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -1350,7 +1362,7 @@ class _RoleManagementPageState extends State<RoleManagementPage> {
         title: const Text('¿Eliminar cuenta de profesor?'),
         content: Text(
           'Se eliminará ${displayName?.isNotEmpty == true ? displayName : '@$username'} '
-          'junto con sus unidades, contenidos de Konsejos y datos asociados. '
+          'junto con sus unidades, contenidos de Ekonsejos y datos asociados. '
           'Esta acción no se puede deshacer.',
         ),
         actions: [
@@ -1399,7 +1411,10 @@ class _RoleManagementPageState extends State<RoleManagementPage> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(title: const Text('Cuentas y roles')),
+      appBar: AppBar(
+        title: const Text('Cuentas y roles'),
+        actions: const [BotonInicio()],
+      ),
       body: _isLoading
           ? const _SupportLoadingIndicator()
           : _error != null
@@ -1632,6 +1647,7 @@ class _CreateTeacherLessonPageState extends State<CreateTeacherLessonPage> {
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
         title: Text(_isEditing ? 'Editar lección' : 'Crear lección'),
+        actions: const [BotonInicio()],
       ),
       body: Form(
         key: _formKey,
@@ -1649,7 +1665,7 @@ class _CreateTeacherLessonPageState extends State<CreateTeacherLessonPage> {
                 ),
                 ButtonSegment(
                   value: DBService.lessonDestinationKorucol,
-                  label: Text('Nota en Konsejos'),
+                  label: Text('Nota en Ekonsejos'),
                   icon: Icon(Icons.sticky_note_2_outlined),
                 ),
               ],
@@ -1830,6 +1846,7 @@ class _StudentProfilesPageState extends State<StudentProfilesPage> {
             onPressed: _isLoading ? null : _loadStudents,
             icon: const Icon(Icons.refresh),
           ),
+          const BotonInicio(),
         ],
       ),
       body: _isLoading
@@ -2006,7 +2023,10 @@ class _StudentProfileDetailsPageState extends State<StudentProfileDetailsPage> {
     final username = student['username'] as String;
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(title: const Text('Perfil del estudiante')),
+      appBar: AppBar(
+        title: const Text('Perfil del estudiante'),
+        actions: const [BotonInicio()],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [

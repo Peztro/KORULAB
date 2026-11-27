@@ -4,6 +4,7 @@ import '../modelos/imagen_perfil.dart';
 import '../tema/tema_korulab.dart';
 import '../widgets/ui_koru.dart';
 import '../modelos/modelos_discusion.dart';
+import '../widgets/boton_inicio.dart';
 
 class DiscussionPage extends StatefulWidget {
   final DiscussionSpace space;
@@ -362,6 +363,7 @@ class _DiscussionPageState extends State<DiscussionPage> {
                 ),
               ],
             ),
+          const BotonInicio(),
         ],
       ),
       body: Column(

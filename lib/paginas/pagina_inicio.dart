@@ -30,6 +30,7 @@ import '../widgets/mascota_flotante.dart';
 import '../widgets/mascota_guia.dart';
 import '../servicios/koru_controlador.dart';
 import '../servicios/servicio_biometrico.dart';
+import '../widgets/boton_inicio.dart';
 
 // Página principal del usuario - muestra lecciones, actividades especiales y progreso
 class HomePage extends StatefulWidget {
@@ -86,6 +87,7 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _currentUsername = DBService.normalizeUsername(widget.username);
     SesionActual.instancia.addListener(_onSesionChanged);
+    pedidoVolverAlInicio.addListener(_irAPrimeraPestana);
     _loadDiscussionSpaces();
     _loadKorucolNotes();
     _loadRole();
@@ -105,6 +107,7 @@ class _HomePageState extends State<HomePage> {
     final canal = _canalMensajes;
     if (canal != null) unawaited(ServicioChat.dejarDeEscuchar(canal));
     SesionActual.instancia.removeListener(_onSesionChanged);
+    pedidoVolverAlInicio.removeListener(_irAPrimeraPestana);
     unawaited(NotificationService.stopListening(onlyFor: _currentUsername));
     super.dispose();
   }
@@ -197,6 +200,11 @@ class _HomePageState extends State<HomePage> {
           ..addAll(loadedSpaces);
       });
     }
+  }
+
+  /// El botón de casa de otras pantallas pide volver a la primera pestaña.
+  void _irAPrimeraPestana() {
+    if (mounted && _selectedIndex != 0) _onItemTapped(0);
   }
 
   void _onItemTapped(int index) {
@@ -749,8 +757,8 @@ class _HomePageState extends State<HomePage> {
         ),
         _buildRoleDashboardAction(
           theme: theme,
-          title: 'Agregar contenido a Konsejos',
-          description: 'Publica una nota o lección en Konsejos.',
+          title: 'Agregar contenido a Ekonsejos',
+          description: 'Publica una nota o lección en Ekonsejos.',
           icon: Icons.post_add,
           color: context.koru.agua,
           onTap: _openCreateKorucolContent,
@@ -822,7 +830,7 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const PageHeader(
-            title: 'Konsejos',
+            title: 'Ekonsejos',
             subtitle:
                 'Ideas y consejos prácticos para cuidar el planeta en casa y en tu comunidad.',
           ),
@@ -1707,12 +1715,12 @@ class _HomePageState extends State<HomePage> {
             NavigationDestination(
               icon: Icon(Icons.school_outlined),
               selectedIcon: Icon(Icons.dashboard_outlined),
-              label: isTeacher ? 'Panel docente' : 'Página principal',
+              label: isTeacher ? 'Panel' : 'Inicio',
             ),
             NavigationDestination(
               icon: Icon(Icons.video_library_outlined),
               selectedIcon: Icon(Icons.video_library),
-              label: 'Konsejos',
+              label: 'Ekonsejos',
             ),
             NavigationDestination(
               icon: Icon(Icons.sports_esports_outlined),

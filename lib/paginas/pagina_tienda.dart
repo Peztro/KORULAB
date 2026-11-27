@@ -1,7 +1,13 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import '../servicios/estadisticas_progreso.dart';
+import '../servicios/frases_tendero.dart';
 import '../tema/tema_korulab.dart';
 import '../widgets/ui_koru.dart';
+import '../widgets/boton_inicio.dart';
+import '../widgets/koru_mascota.dart';
 
 class RewardShopPage extends StatefulWidget {
   static const int hintPrice = 25;
@@ -18,13 +24,65 @@ class RewardShopPage extends StatefulWidget {
 }
 
 class _RewardShopPageState extends State<RewardShopPage> {
+  final _azar = Random();
+
+  /// Lo que dice Koru ahora mismo (null: está callado).
+  String? _frase;
+  Timer? _proxima;
+  Timer? _callar;
+
   @override
   void initState() {
     super.initState();
     progressStats.loadCourseProgress(widget.username);
+    // Saluda al entrar y luego comenta de vez en cuando.
+    _proxima = Timer(const Duration(milliseconds: 1200), () {
+      _decir('¡Bienvenido a mi tienda! Aquí todo se paga con ekostrellas 🌟');
+    });
+  }
+
+  @override
+  void dispose() {
+    _proxima?.cancel();
+    _callar?.cancel();
+    super.dispose();
+  }
+
+  /// Koru dice [frase] (o una al azar) unos segundos y programa la próxima.
+  void _decir([String? frase]) {
+    if (!mounted) return;
+    final productos = [
+      RewardShopPage.hintPrice,
+      RewardShopPage.secondChancePrice,
+      RewardShopPage.starMultiplierPrice,
+      RewardShopPage.streakProtectorPrice,
+    ];
+    final texto =
+        frase ??
+        elegirFraseTendero(
+          frasesTendero(
+            ekostrellas: progressStats.ekostrellas,
+            precioMinimo: productos.reduce(min),
+            precioMaximo: productos.reduce(max),
+          ),
+          _frase,
+          _azar,
+        );
+    setState(() => _frase = texto);
+    _callar?.cancel();
+    _callar = Timer(const Duration(seconds: 6), () {
+      if (mounted) setState(() => _frase = null);
+    });
+    _proxima?.cancel();
+    _proxima = Timer(Duration(seconds: 14 + _azar.nextInt(8)), _decir);
   }
 
   void _showPurchaseResult(bool purchased, String itemName) {
+    _decir(
+      purchased
+          ? '¡Gracias por tu compra! Que te sirva mucho 😊'
+          : 'Uy, aún no te alcanza. ¡Sigue aprendiendo y vuelve pronto!',
+    );
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -102,6 +160,7 @@ class _RewardShopPageState extends State<RewardShopPage> {
               Tab(text: 'Inventario'),
             ],
           ),
+          actions: const [BotonInicio()],
         ),
         body: AnimatedBuilder(
           animation: progressStats,
@@ -129,7 +188,7 @@ class _RewardShopPageState extends State<RewardShopPage> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 12, 8, 12),
           decoration: BoxDecoration(
             gradient: koru.degradadoHero,
             borderRadius: BorderRadius.circular(KoruRadius.xl),
@@ -170,7 +229,26 @@ class _RewardShopPageState extends State<RewardShopPage> {
                   ],
                 ),
               ),
+              // Koru atiende la tienda. Tócalo y te comenta algo.
+              GestureDetector(
+                onTap: _decir,
+                child: const KoruMascota(
+                  emocion: EmocionKoru.tendero,
+                  tamano: 92,
+                ),
+              ),
             ],
+          ),
+        ),
+        // Globo de Koru: aparece debajo de la tarjeta, sin tapar nada.
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: _frase == null
+                ? const SizedBox(width: double.infinity)
+                : _GloboTendero(key: ValueKey(_frase), texto: _frase!),
           ),
         ),
         const SizedBox(height: 8),
@@ -359,4 +437,60 @@ class _ShopProduct {
     required this.owned,
     required this.onPurchase,
   });
+}
+
+/// Globo de diálogo de Koru tendero, con la punta hacia él (arriba a la
+/// derecha).
+class _GloboTendero extends StatelessWidget {
+  const _GloboTendero({super.key, required this.texto});
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fondo = theme.colorScheme.surfaceContainerHigh;
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 44),
+            child: CustomPaint(
+              size: const Size(18, 10),
+              painter: _PuntaGlobo(fondo),
+            ),
+          ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: fondo,
+              borderRadius: BorderRadius.circular(KoruRadius.m),
+            ),
+            child: Text(texto, style: theme.textTheme.bodyMedium),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PuntaGlobo extends CustomPainter {
+  _PuntaGlobo(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final punta = Path()
+      ..moveTo(0, size.height)
+      ..lineTo(size.width / 2, 0)
+      ..lineTo(size.width, size.height)
+      ..close();
+    canvas.drawPath(punta, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_PuntaGlobo old) => old.color != color;
 }

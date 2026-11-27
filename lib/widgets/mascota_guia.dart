@@ -51,7 +51,7 @@ const _pasos = [
   ),
   _Paso(
     'Retos, tienda y comunidad',
-    'Gana ekostrellas y canjéalas en la tienda. Descubre trucos verdes en Konsejos, '
+    'Gana ekostrellas y canjéalas en la tienda. Descubre trucos verdes en Ekonsejos, '
         'comparte ideas en Korublog ¡y escríbeles a tus amigos!',
     EmocionKoru.feliz,
   ),

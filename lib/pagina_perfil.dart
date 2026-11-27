@@ -10,6 +10,7 @@ import 'servicio_bd.dart';
 import 'servicios/sesion_actual.dart';
 import 'tema/tema_korulab.dart';
 import 'widgets/ui_koru.dart';
+import 'widgets/boton_inicio.dart';
 
 class ProfilePage extends StatefulWidget {
   final String username;
@@ -487,7 +488,10 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Mi perfil')),
+      appBar: AppBar(
+        title: const Text('Mi perfil'),
+        actions: const [BotonInicio()],
+      ),
       bottomNavigationBar: _isLoading || _loadError
           ? null
           : SafeArea(
@@ -734,7 +738,7 @@ class _PhotoCropPageState extends State<_PhotoCropPage> {
               ? 'Elige la parte del banner'
               : 'Elige la parte de la foto',
         ),
-        actions: const [],
+        actions: const [BotonInicio()],
       ),
       body: SafeArea(
         child: Column(
