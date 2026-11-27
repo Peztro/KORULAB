@@ -2,8 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'modelos/imagen_perfil.dart';
+import 'modelos/perfil.dart';
+import 'servicios/koru_controlador.dart';
+import 'servicios/servicio_biometrico.dart';
+import 'servicios/sesion_actual.dart';
 
 /// Acceso a datos de Korulab sobre Supabase (Auth + Postgres).
 /// El esquema y las políticas de seguridad están en supabase/schema.sql.
@@ -26,12 +33,19 @@ class DBService {
   static const String adminDisplayName = 'KORUADMIN';
   static const String koruColUsername = 'korucol';
   static const String koruColDisplayName = 'KoruCol';
-  static const String roleAdmin = 'admin';
-  static const String roleTeacher = 'teacher';
-  static const String roleStudent = 'student';
+  static const String roleAdmin = Rol.admin;
+  static const String roleTeacher = Rol.profesor;
+  static const String roleStudent = Rol.estudiante;
+
+  /// Bucket público de Storage con fotos de perfil y banners.
+  /// Cada usuario solo puede escribir en su carpeta `<user id>/`.
+  static const String profileImagesBucket = 'profile-images';
 
   static Future<void> init() async {
-    await Supabase.initialize(url: supabaseUrl, publishableKey: supabaseAnonKey);
+    await Supabase.initialize(
+      url: supabaseUrl,
+      publishableKey: supabaseAnonKey,
+    );
     _watchSessionRefresh();
   }
 
@@ -89,12 +103,6 @@ class DBService {
     } else if (private is List && private.isNotEmpty) {
       row['email'] = (private.first as Map)['email'];
     }
-    row['profile_photo'] = _decodePhoto(row['profile_photo']);
-    row['banner'] = _decodePhoto(row['banner']);
-    row['is_admin'] = row['role'] == roleAdmin ? 1 : 0;
-    if (row['created_at'] != null) {
-      row['created_at'] = _localTimestamp(row['created_at']);
-    }
     return row;
   }
 
@@ -119,7 +127,7 @@ class DBService {
   //  Perfiles y roles
   // ─────────────────────────────────────────────
 
-  static Future<Map<String, dynamic>?> getUserProfile(String username) async {
+  static Future<Perfil?> getUserProfile(String username) async {
     final handle = normalizeUsername(username);
     final rows = _rows(
       await _db
@@ -129,18 +137,22 @@ class DBService {
           .limit(1),
     );
     if (rows.isEmpty) return null;
-    final profile = _profileRow(rows.first);
-    if (profile['email'] == null && handle == _cachedUsername) {
-      profile['email'] = _db.auth.currentUser?.email;
+    final row = _profileRow(rows.first);
+    if (row['email'] == null && handle == _cachedUsername) {
+      row['email'] = _db.auth.currentUser?.email;
     }
-    return profile;
+    final perfil = Perfil.desdeFila(row);
+    if (perfil.id != null && perfil.id == _db.auth.currentUser?.id) {
+      SesionActual.instancia.actualizar(perfil);
+    }
+    return perfil;
   }
 
-  static Future<Map<String, dynamic>?> getUser(String username) async {
+  static Future<Perfil?> getUser(String username) async {
     try {
       return await getUserProfile(username);
     } catch (e) {
-      print('Error obteniendo usuario: $e');
+      debugPrint('Error obteniendo usuario: $e');
       return null;
     }
   }
@@ -209,8 +221,8 @@ class DBService {
     required String bio,
     required String learningGoal,
     String? gender,
-    required Uint8List? banner,
-    required Uint8List? profilePhoto,
+    required ImagenPerfil? banner,
+    required ImagenPerfil? profilePhoto,
   }) async {
     final oldUsername = normalizeUsername(username);
     final normalizedNewUsername = normalizeUsername(newUsername);
@@ -229,6 +241,9 @@ class DBService {
       _roleCache.remove(oldUsername);
     }
 
+    final photoUrl = await _storeProfileImage(userId, 'avatar', profilePhoto);
+    final bannerUrl = await _storeProfileImage(userId, 'banner', banner);
+
     await _db
         .from(userTable)
         .update({
@@ -240,14 +255,55 @@ class DBService {
           'bio': bio,
           'learning_goal': learningGoal,
           'gender': gender,
-          'banner': banner == null ? null : base64Encode(banner),
-          'profile_photo': profilePhoto == null
-              ? null
-              : base64Encode(profilePhoto),
+          'banner': bannerUrl,
+          'profile_photo': photoUrl,
         })
         .eq('id', userId);
-    unawaited(rememberCurrentAccount(displayName: displayName));
+    unawaited(
+      rememberCurrentAccount(
+        displayName: displayName,
+        profilePhoto: ImagenPerfil.desde(photoUrl),
+      ),
+    );
+    try {
+      await getUserProfile(normalizedNewUsername);
+    } catch (e) {
+      debugPrint('No se pudo refrescar el perfil guardado: $e');
+    }
     return null;
+  }
+
+  /// Sube la imagen a Storage si es nueva y devuelve la URL que se guarda
+  /// en `profiles`. Si se quitó la imagen, borra el archivo y devuelve null.
+  static Future<String?> _storeProfileImage(
+    String userId,
+    String name,
+    ImagenPerfil? image,
+  ) async {
+    final path = '$userId/$name';
+    final bucket = _db.storage.from(profileImagesBucket);
+    if (image == null) {
+      try {
+        await bucket.remove([path]);
+      } catch (e) {
+        debugPrint('No se pudo borrar $path de Storage: $e');
+      }
+      return null;
+    }
+    if (!image.pendienteDeSubir) return image.url;
+
+    final bytes = image.bytes!;
+    await bucket.uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(
+        contentType: ImagenPerfil.tipoMime(bytes),
+        upsert: true,
+      ),
+    );
+    // El parámetro v evita que la app muestre la imagen anterior en caché.
+    final version = DateTime.now().millisecondsSinceEpoch;
+    return '${bucket.getPublicUrl(path)}?v=$version';
   }
 
   static Future<List<Map<String, dynamic>>> getUsersForRoleManagement(
@@ -386,7 +442,7 @@ class DBService {
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       });
     } catch (e) {
-      print('No se pudo sincronizar el progreso: $e');
+      debugPrint('No se pudo sincronizar el progreso: $e');
     }
   }
 
@@ -421,7 +477,7 @@ class DBService {
         }
       }
     } catch (e) {
-      print('No se pudo descargar el progreso: $e');
+      debugPrint('No se pudo descargar el progreso: $e');
     }
   }
 
@@ -475,6 +531,7 @@ class DBService {
               .cast<String>();
       return {
         ...user,
+        'profile_photo': ImagenPerfil.desde(user['profile_photo']),
         'completed_lessons': completedIds.length,
         'completed_ids': completedIds,
         'daily_streak': data['korulab_daily_streak_'] as int? ?? 0,
@@ -484,16 +541,13 @@ class DBService {
   }
 
   /// Perfil visible para cualquier usuario; devuelve null si no existe.
-  static Future<Map<String, dynamic>?> getPublicProfile(String username) async {
+  static Future<PerfilPublico?> getPublicProfile(String username) async {
     final data = await _db.rpc(
       'get_public_profile',
       params: {'p_username': normalizeUsername(username)},
     );
     if (data is! Map) return null;
-    final profile = Map<String, dynamic>.from(data);
-    profile['profile_photo'] = _decodePhoto(profile['profile_photo']);
-    profile['banner'] = _decodePhoto(profile['banner']);
-    return _withLocalDate(profile);
+    return PerfilPublico.desdeFila(Map<String, dynamic>.from(data));
   }
 
   /// Publicaciones y respuestas de un usuario, legibles por todos.
@@ -1058,7 +1112,7 @@ class DBService {
         ..._withLocalDate(row),
         if ((profile?['display_name'] as String?)?.trim().isNotEmpty ?? false)
           'author': (profile!['display_name'] as String).trim(),
-        'author_photo': _decodePhoto(profile?['profile_photo']),
+        'author_photo': ImagenPerfil.desde(profile?['profile_photo']),
         'author_role': profile?['role'] ?? (isSystem ? roleAdmin : roleStudent),
       };
     }
@@ -1266,6 +1320,7 @@ class DBService {
     try {
       await _db.auth.signInWithPassword(email: email, password: password);
       _cachedUsername = handle;
+      BiometricAuthService.marcarVerificado();
       return true;
     } on AuthException {
       return false;
@@ -1287,22 +1342,44 @@ class DBService {
     } on AuthException {
       return false;
     }
-    await _db.auth.updateUser(UserAttributes(password: newPassword));
+    await establecerNuevaContrasena(newPassword);
     return true;
   }
 
-  // Genera una contraseña temporal mediante la Edge Function (solo profesores).
-  static Future<String> resetStudentPassword(
-    String teacherUsername,
-    String studentUsername,
-  ) async {
-    if (!await isTeacher(teacherUsername)) {
-      throw StateError('Solo los profesores pueden restablecer contraseñas.');
+  /// True si la cuenta tiene una contraseña temporal (la restableció un
+  /// profesor o admin) y debe crear una propia antes de seguir.
+  static bool get debeCambiarContrasena =>
+      _db.auth.currentUser?.userMetadata?['must_change_password'] == true;
+
+  /// Guarda la nueva contraseña y, en la misma operación, quita la marca de
+  /// contraseña temporal.
+  static Future<void> establecerNuevaContrasena(String nueva) async {
+    await _db.auth.updateUser(
+      UserAttributes(password: nueva, data: {'must_change_password': false}),
+    );
+  }
+
+  /// Restablece la contraseña de [username] mediante la Edge Function.
+  /// Profesores: solo estudiantes. Admins: estudiantes y profesores.
+  /// Si [contrasena] es null se genera una aleatoria. Devuelve la contraseña
+  /// que quedó puesta, para entregársela a la persona.
+  static Future<String> resetPassword(
+    String requesterUsername,
+    String username, {
+    String? contrasena,
+  }) async {
+    if (!await canModerateDiscussions(requesterUsername)) {
+      throw StateError(
+        'Solo profesores y administradores pueden restablecer contraseñas.',
+      );
     }
     try {
       final response = await _db.functions.invoke(
         'reset-student-password',
-        body: {'username': normalizeUsername(studentUsername)},
+        body: {
+          'username': normalizeUsername(username),
+          if (contrasena != null) 'password': contrasena,
+        },
       );
       final data = response.data;
       if (data is Map && data['password'] is String) {
@@ -1311,12 +1388,81 @@ class DBService {
       throw StateError('Respuesta inesperada del servidor.');
     } on FunctionException catch (e) {
       final details = e.details;
+      debugPrint('reset-student-password falló (${e.status}): $details');
+      if (details is Map && details['error'] != null) {
+        throw StateError(details['error'].toString());
+      }
+      if (e.status == 404) {
+        throw StateError(
+          'La función "reset-student-password" no está desplegada en '
+          'Supabase.',
+        );
+      }
+      final mensaje = details is Map ? details['message'] : details;
       throw StateError(
-        details is Map && details['error'] != null
-            ? details['error'].toString()
-            : 'No se pudo contactar la función de restablecimiento.',
+        'La función de restablecimiento falló (código ${e.status})'
+        '${mensaje == null ? '' : ': $mensaje'}',
       );
     }
+  }
+
+  // ── Recuperar contraseña por correo ─────────────────────────────────────
+
+  /// Envía un código de recuperación al correo de la cuenta. Acepta
+  /// @usuario o correo. Devuelve el correo al que se envió.
+  static Future<String> enviarCodigoRecuperacion(String usuarioOCorreo) async {
+    final texto = usuarioOCorreo.trim();
+    String? email;
+    if (texto.contains('@') && !texto.startsWith('@')) {
+      email = texto.toLowerCase();
+    } else {
+      final resultado = await _db.rpc(
+        'login_email',
+        params: {'p_username': normalizeUsername(texto)},
+      );
+      if (resultado is String && resultado.isNotEmpty) email = resultado;
+    }
+    if (email == null) {
+      throw StateError('No encontramos una cuenta con ese usuario.');
+    }
+    try {
+      await _db.auth.resetPasswordForEmail(email);
+    } on AuthException catch (e) {
+      throw StateError(
+        e.statusCode == '429'
+            ? 'Se enviaron demasiados correos. Espera unos minutos.'
+            : 'No se pudo enviar el correo: ${e.message}',
+      );
+    }
+    return email;
+  }
+
+  /// Comprueba el [codigo] recibido en [email], inicia sesión y guarda la
+  /// [nueva] contraseña. Devuelve el @usuario de la cuenta.
+  static Future<String> restablecerConCodigo({
+    required String email,
+    required String codigo,
+    required String nueva,
+  }) async {
+    try {
+      await _db.auth.verifyOTP(
+        email: email,
+        token: codigo.trim(),
+        type: OtpType.recovery,
+      );
+    } on AuthException {
+      throw StateError('El código no es válido o ya caducó.');
+    }
+    await establecerNuevaContrasena(nueva);
+    // Demostró su identidad con el código del correo.
+    BiometricAuthService.marcarVerificado();
+    _cachedUsername = null;
+    final username = await getSessionUsername();
+    if (username == null) {
+      throw StateError('No se encontró el perfil de la cuenta.');
+    }
+    await saveSession(username);
+    return username;
   }
 
   // ─────────────────────────────────────────────
@@ -1325,13 +1471,15 @@ class DBService {
 
   static Future<bool> saveSession(String username) async {
     _cachedUsername = normalizeUsername(username);
-    Map<String, dynamic>? profile;
+    Perfil? profile;
     try {
       profile = await getUserProfile(username);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('No se pudo cargar el perfil al iniciar sesión: $e');
+    }
     await rememberCurrentAccount(
-      displayName: profile?['display_name'] as String?,
-      profilePhoto: profile?['profile_photo'] as Uint8List?,
+      displayName: profile?.displayName,
+      profilePhoto: profile?.foto,
     );
     return true;
   }
@@ -1341,6 +1489,7 @@ class DBService {
   // ─────────────────────────────────────────────
 
   static const String _savedAccountsKey = 'korulab_saved_accounts';
+  static const String _lastUsedAccountKey = 'korulab_last_used_account';
   static Future<void> _accountsQueue = Future.value();
 
   // Serializa las escrituras para que una renovación de token no pise un guardado.
@@ -1398,12 +1547,16 @@ class DBService {
 
   static Future<void> rememberCurrentAccount({
     String? displayName,
-    Uint8List? profilePhoto,
+    ImagenPerfil? profilePhoto,
   }) async {
     final session = _db.auth.currentSession;
     final username = _cachedUsername;
     if (session == null || username == null) return;
     final sessionJson = jsonEncode(session.toJson());
+
+    // Guardar como última cuenta usada
+    await _saveLastUsedAccount(session.user.id, username);
+
     await _mutateSavedAccounts((accounts) {
       final previous = accounts[session.user.id];
       final previousName = previous is Map
@@ -1415,15 +1568,37 @@ class DBService {
       accounts[session.user.id] = {
         'username': username,
         'display_name': displayName ?? previousName ?? '',
-        'profile_photo': profilePhoto == null
-            ? previousPhoto
-            : base64Encode(profilePhoto),
+        // Se guarda la URL; las fotos antiguas sin subir quedan en base64.
+        'profile_photo': switch (profilePhoto) {
+          null => previousPhoto,
+          ImagenPerfil(:final String url) => url,
+          ImagenPerfil(:final bytes) => base64Encode(bytes!),
+        },
         'session': sessionJson,
       };
     });
   }
 
-  static Future<List<Map<String, dynamic>>> getSavedAccounts() async {
+  // Guardar la última cuenta usada
+  static Future<void> _saveLastUsedAccount(
+    String userId,
+    String username,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastUsedAccountKey, '$userId|$username');
+  }
+
+  // Obtener la última cuenta usada
+  static Future<Map<String, String>?> getLastUsedAccount() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastUsed = prefs.getString(_lastUsedAccountKey);
+    if (lastUsed == null) return null;
+    final parts = lastUsed.split('|');
+    if (parts.length != 2) return null;
+    return {'userId': parts[0], 'username': parts[1]};
+  }
+
+  static Future<List<CuentaGuardada>> getSavedAccounts() async {
     final accounts = await _readSavedAccounts();
     final currentId = _db.auth.currentUser?.id;
     final usernames = [
@@ -1431,40 +1606,38 @@ class DBService {
         if (entry is Map && entry['username'] is String)
           normalizeUsername(entry['username'] as String),
     ];
-    final photos = <String, Uint8List?>{};
+    final photos = <String, ImagenPerfil?>{};
     if (usernames.isNotEmpty) {
-      for (final profile in _rows(
-        await _db
-            .from('public_profiles')
-            .select('username, profile_photo')
-            .inFilter('username', usernames),
-      )) {
-        photos[normalizeUsername(profile['username'] as String)] = _decodePhoto(
-          profile['profile_photo'],
-        );
+      try {
+        for (final profile in _rows(
+          await _db
+              .from('public_profiles')
+              .select('username, profile_photo')
+              .inFilter('username', usernames),
+        )) {
+          photos[normalizeUsername(profile['username'] as String)] =
+              ImagenPerfil.desde(profile['profile_photo']);
+        }
+      } catch (e) {
+        debugPrint('No se pudieron actualizar las fotos de las cuentas: $e');
       }
     }
-    final list = <Map<String, dynamic>>[
-      for (final entry in accounts.entries)
-        if (entry.value is Map)
-          {
-            'id': entry.key,
-            'username': (entry.value as Map)['username'] as String? ?? '',
-            'display_name':
-                (entry.value as Map)['display_name'] as String? ?? '',
-            'profile_photo':
-                photos[normalizeUsername(
-                  (entry.value as Map)['username'] as String? ?? '',
-                )] ??
-                _decodePhoto((entry.value as Map)['profile_photo']),
-            'is_current': entry.key == currentId,
-          },
+    final list = [
+      for (final MapEntry(key: id, value: entry) in accounts.entries)
+        if (entry is Map)
+          CuentaGuardada(
+            id: id,
+            username: entry['username'] as String? ?? '',
+            displayName: entry['display_name'] as String? ?? '',
+            foto:
+                photos[normalizeUsername(entry['username'] as String? ?? '')] ??
+                ImagenPerfil.desde(entry['profile_photo']),
+            esActual: id == currentId,
+          ),
     ];
     list.sort((a, b) {
-      if (a['is_current'] != b['is_current']) {
-        return a['is_current'] == true ? -1 : 1;
-      }
-      return (a['username'] as String).compareTo(b['username'] as String);
+      if (a.esActual != b.esActual) return a.esActual ? -1 : 1;
+      return a.username.compareTo(b.username);
     });
     return list;
   }
@@ -1502,6 +1675,8 @@ class DBService {
     }
     _roleCache.clear();
     _cachedUsername = null;
+    SesionActual.instancia.limpiar();
+    KoruControlador.instancia.reiniciar();
     final username = await getSessionUsername() ?? normalizeUsername(savedName);
     _cachedUsername = username;
     return username;
@@ -1517,7 +1692,7 @@ class DBService {
       );
       _cachedUsername = rows.isEmpty ? null : rows.first['username'] as String;
     } catch (e) {
-      print('Error obteniendo sesión: $e');
+      debugPrint('Error obteniendo sesión: $e');
     }
     return _cachedUsername;
   }
@@ -1532,10 +1707,30 @@ class DBService {
       await _db.auth.signOut();
       _cachedUsername = null;
       _roleCache.clear();
+      SesionActual.instancia.limpiar();
+      KoruControlador.instancia.reiniciar();
+      BiometricAuthService.olvidarVerificacion();
       return true;
     } catch (e) {
-      print('Error cerrando sesión: $e');
+      debugPrint('Error cerrando sesión: $e');
       return false;
     }
+  }
+
+  // Obtener la próxima cuenta a usar después de logout
+  static Future<String?> getNextAccountAfterLogout() async {
+    final lastUsed = await getLastUsedAccount();
+    if (lastUsed == null) return null;
+
+    final accounts = await getSavedAccounts();
+    // Buscar cuenta que no sea la actual
+    for (final account in accounts) {
+      if (account.id != lastUsed['userId'] && account.username.isNotEmpty) {
+        return account.username;
+      }
+    }
+
+    // Si solo hay una cuenta (la que se cerró), retornar null
+    return null;
   }
 }

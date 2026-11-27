@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Reportes de compilación de Android (se generan solos)
+/android/build/

@@ -11,11 +11,7 @@ class AnimatedBookIcon extends StatefulWidget {
   final double size;
   final Color color;
 
-  const AnimatedBookIcon({
-    super.key,
-    this.size = 40,
-    this.color = Colors.blue,
-  });
+  const AnimatedBookIcon({super.key, this.size = 40, this.color = Colors.blue});
 
   @override
   State<AnimatedBookIcon> createState() => _AnimatedBookIconState();
@@ -34,9 +30,10 @@ class _AnimatedBookIconState extends State<AnimatedBookIcon>
       vsync: this,
     )..repeat();
 
-    _openAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _openAnimation = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -150,14 +147,21 @@ class _AnimatedPuzzleIconState extends State<AnimatedPuzzleIcon>
 
     _pieceAnimations = List.generate(4, (index) {
       return Tween<Offset>(
-        begin: Offset(0.3 * (index % 2 == 0 ? 1 : -1),
-            0.3 * (index < 2 ? 1 : -1)),
+        begin: Offset(
+          0.3 * (index % 2 == 0 ? 1 : -1),
+          0.3 * (index < 2 ? 1 : -1),
+        ),
         end: Offset.zero,
-      ).animate(CurvedAnimation(
-        parent: _controller,
-        curve: Interval((index * 0.2), (index * 0.2) + 0.6,
-            curve: Curves.elasticOut),
-      ));
+      ).animate(
+        CurvedAnimation(
+          parent: _controller,
+          curve: Interval(
+            (index * 0.2),
+            (index * 0.2) + 0.6,
+            curve: Curves.elasticOut,
+          ),
+        ),
+      );
     });
   }
 
@@ -177,8 +181,10 @@ class _AnimatedPuzzleIconState extends State<AnimatedPuzzleIcon>
           children: [
             // Pieza superior izquierda
             Transform.translate(
-              offset: Offset(_pieceAnimations[0].value.dx * 12,
-                  _pieceAnimations[0].value.dy * 12),
+              offset: Offset(
+                _pieceAnimations[0].value.dx * 12,
+                _pieceAnimations[0].value.dy * 12,
+              ),
               child: Container(
                 width: widget.size * 0.4,
                 height: widget.size * 0.4,
@@ -190,8 +196,10 @@ class _AnimatedPuzzleIconState extends State<AnimatedPuzzleIcon>
             ),
             // Pieza superior derecha
             Transform.translate(
-              offset: Offset(_pieceAnimations[1].value.dx * 12,
-                  _pieceAnimations[1].value.dy * 12),
+              offset: Offset(
+                _pieceAnimations[1].value.dx * 12,
+                _pieceAnimations[1].value.dy * 12,
+              ),
               child: Container(
                 width: widget.size * 0.4,
                 height: widget.size * 0.4,
@@ -203,8 +211,10 @@ class _AnimatedPuzzleIconState extends State<AnimatedPuzzleIcon>
             ),
             // Pieza inferior izquierda
             Transform.translate(
-              offset: Offset(_pieceAnimations[2].value.dx * 12,
-                  _pieceAnimations[2].value.dy * 12),
+              offset: Offset(
+                _pieceAnimations[2].value.dx * 12,
+                _pieceAnimations[2].value.dy * 12,
+              ),
               child: Container(
                 width: widget.size * 0.4,
                 height: widget.size * 0.4,
@@ -216,8 +226,10 @@ class _AnimatedPuzzleIconState extends State<AnimatedPuzzleIcon>
             ),
             // Pieza inferior derecha
             Transform.translate(
-              offset: Offset(_pieceAnimations[3].value.dx * 12,
-                  _pieceAnimations[3].value.dy * 12),
+              offset: Offset(
+                _pieceAnimations[3].value.dx * 12,
+                _pieceAnimations[3].value.dy * 12,
+              ),
               child: Container(
                 width: widget.size * 0.4,
                 height: widget.size * 0.4,
@@ -265,13 +277,15 @@ class _AnimatedStarIconState extends State<AnimatedStarIcon>
       vsync: this,
     )..repeat();
 
-    _glowAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _glowAnimation = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
 
-    _rotateAnimation = Tween<double>(begin: 0, end: 0.15).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _rotateAnimation = Tween<double>(
+      begin: 0,
+      end: 0.15,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -388,9 +402,10 @@ class _PulsatingHeartIconState extends State<PulsatingHeartIcon>
       vsync: this,
     )..repeat();
 
-    _scaleAnimation = Tween<double>(begin: 1, end: 1.2).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 1,
+      end: 1.2,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
   }
 
   @override
@@ -406,11 +421,7 @@ class _PulsatingHeartIconState extends State<PulsatingHeartIcon>
       builder: (context, child) {
         return Transform.scale(
           scale: _scaleAnimation.value,
-          child: Icon(
-            Icons.favorite,
-            size: widget.size,
-            color: widget.color,
-          ),
+          child: Icon(Icons.favorite, size: widget.size, color: widget.color),
         );
       },
     );
@@ -441,10 +452,8 @@ class _RotatingGearIconState extends State<RotatingGearIcon>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: widget.duration,
-      vsync: this,
-    )..repeat();
+    _controller = AnimationController(duration: widget.duration, vsync: this)
+      ..repeat();
   }
 
   @override
@@ -457,11 +466,7 @@ class _RotatingGearIconState extends State<RotatingGearIcon>
   Widget build(BuildContext context) {
     return RotationTransition(
       turns: _controller,
-      child: Icon(
-        Icons.settings,
-        size: widget.size,
-        color: widget.color,
-      ),
+      child: Icon(Icons.settings, size: widget.size, color: widget.color),
     );
   }
 }
@@ -497,9 +502,10 @@ class _AnimatedBadgeState extends State<AnimatedBadge>
       duration: const Duration(milliseconds: 500),
       vsync: this,
     );
-    _scaleAnimation = Tween<double>(begin: 0.5, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 0.5,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
     _controller.forward();
   }
 
@@ -536,7 +542,10 @@ class _AnimatedBadgeState extends State<AnimatedBadge>
                     color: widget.backgroundColor,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                  constraints: const BoxConstraints(
+                    minWidth: 24,
+                    minHeight: 24,
+                  ),
                   child: Text(
                     widget.count > 99 ? '99+' : widget.count.toString(),
                     textAlign: TextAlign.center,

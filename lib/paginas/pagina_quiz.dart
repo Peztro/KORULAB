@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../widgets/actividad_ui.dart';
 import '../servicio_comentarios.dart';
 import '../modelos/modelos_curso.dart';
 import '../paginas/pagina_curso.dart';
@@ -93,9 +94,6 @@ class _QuizPageState extends State<QuizPage> {
         unawaited(vibrateOnWrongAnswer());
       }
     });
-    if (question.answerIndex != index) {
-      showWrongAnswerNotice(context, question.options[question.answerIndex]);
-    }
   }
 
   void _useHint() {
@@ -135,31 +133,25 @@ class _QuizPageState extends State<QuizPage> {
   }
 
   @override
-  Widget build(BuildContext context) => LeaveLessonGuard(
-    active: !completed,
-    child: _buildScaffold(context),
-  );
+  Widget build(BuildContext context) =>
+      LeaveLessonGuard(active: !completed, child: _buildScaffold(context));
 
   Widget _buildScaffold(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: Text(widget.activity.title),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: completed
-            ? ResultScreen(
-                score: score,
-                total: shuffledQuestions.length,
-                incorrectAttempts: incorrectAttempts,
-                onRetry: _reset,
-                activityName: widget.activity.title,
-              )
-            : _buildQuestion(),
+      appBar: AppBar(title: Text(widget.activity.title)),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: completed
+              ? ResultScreen(
+                  score: score,
+                  total: shuffledQuestions.length,
+                  incorrectAttempts: incorrectAttempts,
+                  onRetry: _reset,
+                  activityName: widget.activity.title,
+                )
+              : _buildQuestion(),
+        ),
       ),
     );
   }
@@ -167,122 +159,86 @@ class _QuizPageState extends State<QuizPage> {
   Widget _buildQuestion() {
     final theme = Theme.of(context);
     final question = shuffledQuestions[questionIndex];
+    final canRetry =
+        selectedOption != null &&
+        question.answerIndex != selectedOption &&
+        progressStats.secondChances > 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        LinearProgressIndicator(
-          value: (questionIndex + 1) / shuffledQuestions.length,
-          backgroundColor: theme.colorScheme.outlineVariant,
-          color: theme.colorScheme.primaryContainer,
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Pregunta ${questionIndex + 1} de ${shuffledQuestions.length}',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          question.prompt,
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: theme.colorScheme.onSurface,
-          ),
-        ),
-        Align(
-          alignment: Alignment.centerRight,
-          child:
-              selectedOption != null &&
-                  question.answerIndex != selectedOption &&
-                  progressStats.secondChances > 0
-              ? TextButton.icon(
+        ActivityProgressHeader(
+          current: questionIndex + 1,
+          total: shuffledQuestions.length,
+          trailing: canRetry
+              ? HelperChip(
+                  icon: Icons.replay_rounded,
+                  label: 'Segundo intento (${progressStats.secondChances})',
                   onPressed: _useSecondChance,
-                  icon: const Icon(Icons.replay),
-                  label: Text(
-                    'Segundo intento (${progressStats.secondChances})',
-                  ),
                 )
-              : TextButton.icon(
+              : HelperChip(
+                  icon: Icons.lightbulb_rounded,
+                  label: 'Pista (${progressStats.hintCredits})',
                   onPressed:
                       selectedOption != null ||
                           _hintedOptionIndex != null ||
                           progressStats.hintCredits == 0
                       ? null
                       : _useHint,
-                  icon: const Icon(Icons.lightbulb_outline),
-                  label: Text('Pista (${progressStats.hintCredits})'),
                 ),
         ),
-        const SizedBox(height: 24),
-        ...List.generate(question.options.length, (index) {
-          final option = question.options[index];
-          final isSelected = selectedOption == index;
-          final isCorrect = question.answerIndex == index;
-          final isEliminated = _hintedOptionIndex == index;
-          Color? cardColor;
-          Color? textColor;
-          if (selectedOption != null) {
-            if (isSelected && isCorrect) {
-              cardColor = Colors.green.shade800;
-              textColor = Colors.white;
-            } else if (isSelected && !isCorrect) {
-              cardColor = Colors.red.shade800;
-              textColor = Colors.white;
-            }
-          }
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isEliminated
-                    ? theme.colorScheme.outlineVariant
-                    : cardColor ??
-                          theme.colorScheme.surfaceContainerHighest.withValues(
-                            alpha: 0.5,
-                          ),
-                foregroundColor: isEliminated
-                    ? theme.colorScheme.onSurfaceVariant
-                    : textColor ?? theme.colorScheme.onSurface,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 16,
-                  horizontal: 14,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: isSelected
-                        ? theme.colorScheme.primaryContainer
-                        : Colors.transparent,
-                    width: 2,
-                  ),
-                ),
-              ),
-              onPressed: isEliminated ? null : () => selectOption(index),
-              child: Align(
-                alignment: Alignment.centerLeft,
+        const SizedBox(height: 16),
+        Expanded(
+          child: ListView(
+            children: [
+              PromptCard(
+                icon: Icons.help_rounded,
                 child: Text(
-                  isEliminated ? '$option  ·  Descartada' : option,
-                  style: const TextStyle(fontSize: 16),
+                  question.prompt,
+                  style: theme.textTheme.titleLarge?.copyWith(height: 1.3),
                 ),
               ),
-            ),
-          );
-        }),
-        const Spacer(),
-        FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: theme.colorScheme.primaryContainer,
-            foregroundColor: theme.colorScheme.onPrimaryContainer,
+              const SizedBox(height: 20),
+              for (var index = 0; index < question.options.length; index++)
+                AnswerOption(
+                  index: index,
+                  text: question.options[index],
+                  estado: _optionState(question.answerIndex, index),
+                  onTap: _hintedOptionIndex == index || selectedOption != null
+                      ? null
+                      : () => selectOption(index),
+                ),
+            ],
           ),
+        ),
+        const SizedBox(height: 12),
+        AnswerFooter(
+          feedback: selectedOption == null
+              ? null
+              : selectedOption == question.answerIndex
+              ? const FeedbackRespuesta.correcta()
+              : FeedbackRespuesta.incorrecta(
+                  'Respuesta correcta: ${question.options[question.answerIndex]}',
+                ),
+          label: questionIndex + 1 == shuffledQuestions.length
+              ? 'Finalizar'
+              : 'Siguiente',
+          icon: questionIndex + 1 == shuffledQuestions.length
+              ? Icons.flag_rounded
+              : Icons.arrow_forward_rounded,
           onPressed: selectedOption == null ? null : nextQuestion,
-          child: Text(
-            questionIndex + 1 == shuffledQuestions.length
-                ? 'Finalizar'
-                : 'Siguiente',
-          ),
         ),
       ],
     );
+  }
+
+  EstadoOpcion _optionState(int answerIndex, int index) {
+    if (_hintedOptionIndex == index) return EstadoOpcion.descartada;
+    if (selectedOption == null) return EstadoOpcion.normal;
+    if (selectedOption == index) {
+      return index == answerIndex
+          ? EstadoOpcion.correcta
+          : EstadoOpcion.incorrecta;
+    }
+    return EstadoOpcion.normal;
   }
 }

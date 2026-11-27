@@ -6,7 +6,11 @@ import 'package:vibration/vibration.dart';
 class LeaveLessonGuard extends StatelessWidget {
   final bool active;
   final Widget child;
-  const LeaveLessonGuard({super.key, required this.active, required this.child});
+  const LeaveLessonGuard({
+    super.key,
+    required this.active,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -39,34 +43,6 @@ class LeaveLessonGuard extends StatelessWidget {
       child: child,
     );
   }
-}
-
-/// Notificación inferior con "Incorrecto" y la respuesta correcta.
-void showWrongAnswerNotice(BuildContext context, String correctAnswer) {
-  final messenger = ScaffoldMessenger.of(context);
-  messenger.hideCurrentSnackBar();
-  messenger.showSnackBar(
-    SnackBar(
-      backgroundColor: Colors.red.shade800,
-      behavior: SnackBarBehavior.floating,
-      duration: const Duration(seconds: 3),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Incorrecto',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'Respuesta correcta: $correctAnswer',
-            style: const TextStyle(color: Colors.white),
-          ),
-        ],
-      ),
-    ),
-  );
 }
 
 /// Vibración de duración media (300 ms) al responder mal.

@@ -1,11 +1,11 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../modelos/perfil.dart';
 import '../servicio_bd.dart';
 
 class AccountSwitcherSheet extends StatefulWidget {
   const AccountSwitcherSheet({required this.onSwitch, required this.onAdd});
 
-  final void Function(Map<String, dynamic> account) onSwitch;
+  final void Function(CuentaGuardada account) onSwitch;
   final VoidCallback onAdd;
 
   @override
@@ -13,7 +13,7 @@ class AccountSwitcherSheet extends StatefulWidget {
 }
 
 class AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
-  List<Map<String, dynamic>> _accounts = [];
+  List<CuentaGuardada> _accounts = [];
   final Set<String> _forgettingAccounts = {};
   bool _isLoading = true;
   String? _loadError;
@@ -45,8 +45,8 @@ class AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
     }
   }
 
-  Future<void> _forget(Map<String, dynamic> account) async {
-    final username = account['username'] as String? ?? '';
+  Future<void> _forget(CuentaGuardada account) async {
+    final username = account.username;
     final shouldForget = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -69,13 +69,13 @@ class AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
     );
     if (shouldForget != true || !mounted) return;
 
-    final accountId = account['id'] as String;
+    final accountId = account.id;
     setState(() => _forgettingAccounts.add(accountId));
     try {
       await DBService.forgetAccount(accountId);
       if (!mounted) return;
       setState(() {
-        _accounts.removeWhere((saved) => saved['id'] == accountId);
+        _accounts.removeWhere((saved) => saved.id == accountId);
         _forgettingAccounts.remove(accountId);
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -134,45 +134,38 @@ class AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
           for (final account in _accounts)
             ListTile(
               leading: CircleAvatar(
-                backgroundImage: account['profile_photo'] is Uint8List
-                    ? MemoryImage(account['profile_photo'] as Uint8List)
-                    : null,
-                child: account['profile_photo'] is Uint8List
+                backgroundImage: account.foto?.provider,
+                child: account.foto != null
                     ? null
                     : Text(
-                        ((account['display_name'] as String).trim().isNotEmpty
-                                    ? account['display_name'] as String
-                                    : account['username'] as String)
+                        (account.displayName.trim().isNotEmpty
+                                    ? account.displayName.trim()
+                                    : account.username)
                                 .characters
                                 .firstOrNull
                                 ?.toUpperCase() ??
                             '?',
                       ),
               ),
-              title: Text(
-                (account['display_name'] as String).trim().isNotEmpty
-                    ? account['display_name'] as String
-                    : '@${account['username']}',
-              ),
-              subtitle: Text('@${account['username']}'),
-              trailing: account['is_current'] == true
+              title: Text(account.nombreVisible),
+              subtitle: Text('@${account.username}'),
+              trailing: account.esActual
                   ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
                   : IconButton(
                       tooltip: 'Quitar cuenta guardada',
-                      icon: _forgettingAccounts.contains(account['id'])
+                      icon: _forgettingAccounts.contains(account.id)
                           ? const SizedBox(
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.close),
-                      onPressed: _forgettingAccounts.contains(account['id'])
+                      onPressed: _forgettingAccounts.contains(account.id)
                           ? null
                           : () => _forget(account),
                     ),
               onTap:
-                  account['is_current'] == true ||
-                      _forgettingAccounts.contains(account['id'])
+                  account.esActual || _forgettingAccounts.contains(account.id)
                   ? null
                   : () => widget.onSwitch(account),
             ),

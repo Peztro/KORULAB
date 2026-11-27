@@ -26,7 +26,9 @@ class CourseCard extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.5,
+          ),
           elevation: 4,
           child: InkWell(
             borderRadius: BorderRadius.circular(18),
@@ -145,7 +147,10 @@ class SpecialActivityCard extends StatelessWidget {
                 Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: color.withValues(alpha: 0.5), width: 2),
+                    border: Border.all(
+                      color: color.withValues(alpha: 0.5),
+                      width: 2,
+                    ),
                   ),
                   child: CircleAvatar(
                     radius: 32,

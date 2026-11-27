@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'servicio_bd.dart';
 import 'datos/catalogo_cursos.dart';
 import 'modelos/modelos_curso.dart';
-import 'paginas/pagina_curso.dart';
 import 'servicios/estadisticas_progreso.dart';
 
 const _typeLabels = {
@@ -192,175 +191,41 @@ Course courseFromRow(Map<String, dynamic> row) {
   );
 }
 
-class TeacherCourseCard extends StatelessWidget {
+/// Menú de opciones (editar / eliminar) de un curso para quien lo administra.
+class TeacherCourseMenu extends StatelessWidget {
   final Map<String, dynamic> row;
-  final Course? courseOverride;
   final String username;
   final Future<void> Function() onChanged;
-  final int unitNumber;
-  final bool isUnlocked;
 
-  const TeacherCourseCard({
+  const TeacherCourseMenu({
     super.key,
     required this.row,
-    this.courseOverride,
     required this.username,
     required this.onChanged,
-    required this.unitNumber,
-    required this.isUnlocked,
   });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final course = courseOverride ?? courseFromRow(row);
-    final isCompleted =
-        course.activities.isNotEmpty &&
-        course.activities.every(progressStats.isActivityCompleted);
-    final doneCount = course.activities
-        .where(progressStats.isActivityCompleted)
-        .length;
-    final percent = course.activities.isEmpty
-        ? 0
-        : (doneCount * 100 / course.activities.length).round();
-    final nodeColor = isCompleted || isUnlocked
-        ? theme.colorScheme.primary
-        : theme.colorScheme.outlineVariant;
-    final card = Card(
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      color: theme.colorScheme.surfaceContainerHighest.withValues(
-        alpha: isUnlocked ? 0.75 : 0.35,
-      ),
-      child: ListTile(
-        title: Text(
-          'UNIDAD $unitNumber',
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: nodeColor,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 5),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                course.title,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: isUnlocked
-                      ? theme.colorScheme.onSurface
-                      : theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              if (course.subtitle.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(course.subtitle),
-              ],
-              const SizedBox(height: 4),
-              Text(
-                '${course.activities.length} actividades · '
-                '${row['teacher_name'] ?? 'Profesor'}',
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: LinearProgressIndicator(
-                      value: percent / 100,
-                      minHeight: 6,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '$percent%',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (row['can_manage'] == true)
-              PopupMenuButton<String>(
-                tooltip: 'Opciones',
-                onSelected: (value) async {
-                  if (value == 'edit') {
-                    final saved = await Navigator.push<bool>(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TeacherCourseEditorPage(
-                          username: username,
-                          course: row,
-                        ),
-                      ),
-                    );
-                    if (saved == true) await onChanged();
-                  } else {
-                    await _delete(context);
-                  }
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'edit', child: Text('Editar')),
-                  PopupMenuItem(value: 'delete', child: Text('Eliminar')),
-                ],
-              ),
-          ],
-        ),
-        onTap: isUnlocked
-            ? () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => CoursePage(course: course, courseIndex: -1),
-                ),
-              )
-            : () => ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Completa la unidad ${unitNumber - 1} para desbloquear esta.',
-                  ),
-                ),
-              ),
-      ),
-    );
-    return Row(
-      children: [
-        SizedBox(
-          width: 52,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Positioned.fill(
-                child: Center(
-                  child: Container(
-                    width: 4,
-                    color: nodeColor.withValues(alpha: 0.6),
-                  ),
-                ),
-              ),
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: nodeColor,
-                foregroundColor: theme.colorScheme.onPrimary,
-                child: Icon(
-                  isCompleted
-                      ? Icons.check
-                      : isUnlocked
-                      ? Icons.eco_outlined
-                      : Icons.lock_outline,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(child: card),
+    return PopupMenuButton<String>(
+      tooltip: 'Opciones',
+      icon: const Icon(Icons.more_horiz_rounded),
+      onSelected: (value) async {
+        if (value == 'edit') {
+          final saved = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  TeacherCourseEditorPage(username: username, course: row),
+            ),
+          );
+          if (saved == true) await onChanged();
+        } else {
+          await _delete(context);
+        }
+      },
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'edit', child: Text('Editar')),
+        PopupMenuItem(value: 'delete', child: Text('Eliminar')),
       ],
     );
   }
@@ -531,11 +396,7 @@ class _TeacherCourseEditorPageState extends State<TeacherCourseEditorPage> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: Text(_isEditing ? 'Editar curso' : 'Crear curso'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
+      appBar: AppBar(title: Text(_isEditing ? 'Editar curso' : 'Crear curso')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -543,20 +404,14 @@ class _TeacherCourseEditorPageState extends State<TeacherCourseEditorPage> {
             controller: _title,
             enabled: !_saving,
             maxLength: 60,
-            decoration: const InputDecoration(
-              labelText: 'Título del curso',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(labelText: 'Título del curso'),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _subtitle,
             enabled: !_saving,
             maxLength: 120,
-            decoration: const InputDecoration(
-              labelText: 'Descripción corta',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(labelText: 'Descripción corta'),
           ),
           const SizedBox(height: 8),
           Text('Actividades', style: theme.textTheme.titleMedium),
@@ -778,10 +633,7 @@ class _ActivityEditorPageState extends State<ActivityEditorPage> {
         initialValue: item[key] as String? ?? '',
         maxLines: maxLines,
         onChanged: (value) => item[key] = value,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
+        decoration: InputDecoration(labelText: label),
       ),
     );
   }
@@ -799,7 +651,9 @@ class _ActivityEditorPageState extends State<ActivityEditorPage> {
                   item['answer'] == i
                       ? Icons.check_circle
                       : Icons.radio_button_unchecked,
-                  color: item['answer'] == i ? Colors.greenAccent : null,
+                  color: item['answer'] == i
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
                 ),
                 onPressed: () => setState(() => item['answer'] = i),
               ),
@@ -809,10 +663,7 @@ class _ActivityEditorPageState extends State<ActivityEditorPage> {
                   child: TextFormField(
                     initialValue: options[i],
                     onChanged: (value) => options[i] = value,
-                    decoration: InputDecoration(
-                      labelText: 'Opción ${i + 1}',
-                      border: const OutlineInputBorder(),
-                    ),
+                    decoration: InputDecoration(labelText: 'Opción ${i + 1}'),
                   ),
                 ),
               ),
@@ -878,11 +729,7 @@ class _ActivityEditorPageState extends State<ActivityEditorPage> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: Text(_typeLabels[widget.type] ?? 'Actividad'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
+      appBar: AppBar(title: Text(_typeLabels[widget.type] ?? 'Actividad')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -891,7 +738,6 @@ class _ActivityEditorPageState extends State<ActivityEditorPage> {
             maxLength: 60,
             decoration: const InputDecoration(
               labelText: 'Título de la actividad',
-              border: OutlineInputBorder(),
             ),
           ),
           if (widget.type == 'sorting') ...[
@@ -899,10 +745,7 @@ class _ActivityEditorPageState extends State<ActivityEditorPage> {
             TextFormField(
               initialValue: _instruction,
               onChanged: (value) => _instruction = value,
-              decoration: const InputDecoration(
-                labelText: 'Instrucción',
-                border: OutlineInputBorder(),
-              ),
+              decoration: const InputDecoration(labelText: 'Instrucción'),
             ),
             const SizedBox(height: 8),
             const Text(

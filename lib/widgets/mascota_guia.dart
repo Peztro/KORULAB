@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../tema/tema_korulab.dart';
+import 'koru_mascota.dart';
+
+/// Guía de bienvenida en la que Koru se presenta. Sale la primera vez que
+/// un estudiante entra y se puede repetir desde Ajustes.
 class MascotaGuia {
   static String _key(String username) => 'mascota_intro_vista_$username';
 
@@ -28,21 +33,33 @@ class MascotaGuia {
 class _Paso {
   final String titulo;
   final String mensaje;
-  const _Paso(this.titulo, this.mensaje);
+  final EmocionKoru emocion;
+  const _Paso(this.titulo, this.mensaje, this.emocion);
 }
 
 const _pasos = [
   _Paso(
     '¡Hola, soy Koru!',
-    'Seré tu guía en KORULAB. Aprenderemos juntos a cuidar el planeta.',
+    'Seré tu guía en Korulab. Aprenderemos juntos a cuidar el planeta.',
+    EmocionKoru.saludando,
   ),
   _Paso(
     'Lecciones y Ruta Eko',
-    'En Inicio encuentras tus lecciones y la Ruta Eko. Completa actividades para avanzar y mantener tu racha.',
+    'En Inicio encuentras la Ruta Eko: un camino de unidades. Completa '
+        'actividades para avanzar y mantener tu racha 🔥',
+    EmocionKoru.feliz,
   ),
   _Paso(
     'Retos, tienda y comunidad',
-    'Gana ekostrellas con los retos ecológicos, canjéalas en la tienda y comparte ideas en Korucol y Korublog.',
+    'Gana ekostrellas y canjéalas en la tienda. Descubre trucos verdes en Konsejos, '
+        'comparte ideas en Korublog ¡y escríbeles a tus amigos!',
+    EmocionKoru.feliz,
+  ),
+  _Paso(
+    'Siempre estaré cerca',
+    'Me verás en la esquina de Inicio. Tócame cuando quieras y te daré un '
+        'consejo para cuidar el planeta 🌱',
+    EmocionKoru.feliz,
   ),
 ];
 
@@ -53,98 +70,98 @@ class _MascotaGuiaDialog extends StatefulWidget {
   State<_MascotaGuiaDialog> createState() => _MascotaGuiaDialogState();
 }
 
-class _MascotaGuiaDialogState extends State<_MascotaGuiaDialog>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _bounce = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1400),
-  )..repeat(reverse: true);
+class _MascotaGuiaDialogState extends State<_MascotaGuiaDialog> {
   int _paso = 0;
-
-  @override
-  void dispose() {
-    _bounce.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final koru = context.koru;
     final paso = _pasos[_paso];
     final esUltimo = _paso == _pasos.length - 1;
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedBuilder(
-              animation: _bounce,
-              builder: (_, child) => Transform.translate(
-                offset: Offset(
-                  0,
-                  -8 * Curves.easeInOut.transform(_bounce.value),
-                ),
-                child: child,
-              ),
-              child: Image.asset('assets/images/koru_base.png', height: 140),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              paso.titulo,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              paso.mensaje,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Cabecera con el degradado de la marca y Koru.
+          Container(
+            height: 190,
+            decoration: BoxDecoration(gradient: koru.degradadoHero),
+            alignment: Alignment.center,
+            child: KoruMascota(emocion: paso.emocion, tamano: 150),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                for (var i = 0; i < _pasos.length; i++)
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    width: i == _paso ? 18 : 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: i == _paso
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.outlineVariant,
-                      borderRadius: BorderRadius.circular(4),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: Column(
+                    key: ValueKey(_paso),
+                    children: [
+                      Text(
+                        paso.titulo,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        paso.mensaje,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < _pasos.length; i++)
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        width: i == _paso ? 20 : 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: i == _paso
+                              ? koru.hoja
+                              : theme.colorScheme.outlineVariant,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    if (!esUltimo)
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Omitir'),
+                      ),
+                    const Spacer(),
+                    FilledButton(
+                      onPressed: () {
+                        if (esUltimo) {
+                          Navigator.pop(context);
+                        } else {
+                          setState(() => _paso++);
+                        }
+                      },
+                      child: Text(esUltimo ? '¡Empezar!' : 'Siguiente'),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                if (!esUltimo)
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Omitir'),
-                  ),
-                const Spacer(),
-                FilledButton(
-                  onPressed: () {
-                    if (esUltimo) {
-                      Navigator.pop(context);
-                    } else {
-                      setState(() => _paso++);
-                    }
-                  },
-                  child: Text(esUltimo ? '¡Empezar!' : 'Siguiente'),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

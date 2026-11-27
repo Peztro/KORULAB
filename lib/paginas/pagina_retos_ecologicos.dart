@@ -2,6 +2,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../servicio_bd.dart';
+import '../tema/tema_korulab.dart';
+import '../widgets/ui_koru.dart';
 
 // ─────────────────────────────────────────────
 //  COURSE CARD
@@ -23,112 +25,149 @@ class _EcoChallengesPageState extends State<EcoChallengesPage> {
           id: 'bottle',
           title: 'Usa una botella reutilizable',
           description: 'Evita comprar una botella desechable hoy.',
-          icon: Icons.water_drop_outlined,
+          icon: Icons.water_drop_rounded,
         ),
         (
           id: 'recycle',
           title: 'Separa tus residuos',
           description: 'Clasifica papel, envases y residuos orgánicos.',
-          icon: Icons.recycling,
+          icon: Icons.recycling_rounded,
         ),
         (
           id: 'lights',
           title: 'Ahorra energía',
           description: 'Apaga las luces y desconecta lo que no uses.',
-          icon: Icons.bolt,
+          icon: Icons.bolt_rounded,
         ),
         (
           id: 'walk',
           title: 'Elige movilidad sostenible',
           description:
               'Camina, usa bicicleta o transporte público en un trayecto.',
-          icon: Icons.directions_walk,
+          icon: Icons.directions_bike_rounded,
         ),
         (
           id: 'food',
           title: 'Reduce el desperdicio de comida',
           description: 'Planifica una comida con lo que ya tienes en casa.',
-          icon: Icons.restaurant_outlined,
+          icon: Icons.restaurant_rounded,
         ),
         (
           id: 'reuse',
           title: 'Dale otro uso a un objeto',
           description:
               'Reutiliza un envase, repara algo o comparte lo que no necesitas.',
-          icon: Icons.recycling_outlined,
+          icon: Icons.handyman_rounded,
         ),
       ];
+
+  Color _colorFor(BuildContext context, String id) {
+    final koru = context.koru;
+    return switch (id) {
+      'bottle' => koru.agua,
+      'lights' => koru.oro,
+      'walk' => koru.tierra,
+      'food' => koru.fuego,
+      _ => koru.hoja,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
+    final koru = context.koru;
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Retos ekológicos'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
+      appBar: AppBar(title: const Text('Retos ekológicos')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         children: [
-          Text(
-            'Un reto a tu ritmo',
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: theme.colorScheme.onSurface,
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: koru.degradadoHero,
+              borderRadius: BorderRadius.circular(KoruRadius.xl),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Un reto a tu ritmo',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: koru.textoHero,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Pequeñas acciones cotidianas también ayudan a cuidar '
+                        'el planeta. Anota cada avance en tu diario.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: koru.textoHero.withValues(alpha: 0.85),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Icon(
+                  Icons.emoji_events_rounded,
+                  size: 52,
+                  color: koru.textoHero.withValues(alpha: 0.9),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            'Pequeñas acciones cotidianas también ayudan a cuidar el planeta.',
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 20),
-          ..._challenges.map((challenge) {
-            return Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              color: theme.colorScheme.surfaceContainerHighest.withValues(
-                alpha: 0.65,
-              ),
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: Icon(
-                      challenge.icon,
-                      color: theme.colorScheme.primaryContainer,
-                    ),
-                    title: Text(challenge.title),
-                    subtitle: Text(challenge.description),
+          SectionTitle('${_challenges.length} retos disponibles'),
+          for (final challenge in _challenges)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: FeatureCard(
+                title: challenge.title,
+                subtitle: challenge.description,
+                icon: challenge.icon,
+                color: _colorFor(context, challenge.id),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
                   ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 16, bottom: 8),
-                      child: TextButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => EcoChallengeJournalPage(
-                                username: widget.username,
-                                challengeId: challenge.id,
-                                challengeTitle: challenge.title,
-                              ),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.menu_book_outlined),
-                        label: const Text('Abrir diario'),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.menu_book_rounded,
+                        size: 16,
+                        color: theme.colorScheme.onPrimaryContainer,
                       ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Diario',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: theme.colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => EcoChallengeJournalPage(
+                      username: widget.username,
+                      challengeId: challenge.id,
+                      challengeTitle: challenge.title,
                     ),
                   ),
-                ],
+                ),
               ),
-            );
-          }),
+            ),
         ],
       ),
     );
@@ -227,7 +266,6 @@ class _EcoChallengeJournalPageState extends State<EcoChallengeJournalPage> {
                     decoration: const InputDecoration(
                       labelText: 'Tu experiencia',
                       hintText: 'Escribe los detalles de tu proceso...',
-                      border: OutlineInputBorder(),
                       alignLabelWithHint: true,
                     ),
                   ),
@@ -383,11 +421,7 @@ class _EcoChallengeJournalPageState extends State<EcoChallengeJournalPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Diario del reto'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
+      appBar: AppBar(title: const Text('Diario del reto')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addEntry,
         icon: const Icon(Icons.add),
@@ -410,110 +444,129 @@ class _EcoChallengeJournalPageState extends State<EcoChallengeJournalPage> {
               ),
             )
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
               children: [
-                Text(
-                  widget.challengeTitle,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                PageHeader(
+                  title: widget.challengeTitle,
+                  subtitle:
+                      'Registra tus acciones, reflexiones y fotos día a día.',
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'Registra tus acciones, reflexiones y fotos día a día.',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 20),
                 if (_entries.isEmpty)
                   Card(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    child: const Padding(
-                      padding: EdgeInsets.all(24),
+                    child: Padding(
+                      padding: const EdgeInsets.all(28),
                       child: Column(
                         children: [
-                          Icon(Icons.auto_stories_outlined, size: 40),
-                          SizedBox(height: 12),
+                          IconTile(
+                            icon: Icons.auto_stories_rounded,
+                            color: context.koru.hoja,
+                            size: 64,
+                          ),
+                          const SizedBox(height: 14),
                           Text(
                             'Tu diario está listo',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                            style: theme.textTheme.titleMedium,
                           ),
-                          SizedBox(height: 6),
+                          const SizedBox(height: 6),
                           Text(
-                            'Agrega una nota o una foto para contar cómo avanzas con este reto.',
+                            'Agrega una nota o una foto para contar cómo '
+                            'avanzas con este reto.',
                             textAlign: TextAlign.center,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ],
                       ),
                     ),
                   )
                 else
-                  ..._entries.map((entry) {
-                    final note = entry['note'] as String;
-                    final photos = entry['photos'] as List<Uint8List>;
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.calendar_today_outlined,
-                                  size: 18,
-                                  color: theme.colorScheme.primaryContainer,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    _formatDate(entry['created_at'] as String),
-                                    style: theme.textTheme.labelLarge,
-                                  ),
-                                ),
-                                IconButton(
-                                  tooltip: 'Eliminar entrada',
-                                  onPressed: () =>
-                                      _deleteEntry(entry['id'] as int),
-                                  icon: const Icon(Icons.delete_outline),
-                                ),
-                              ],
-                            ),
-                            if (note.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Text(note),
-                            ],
-                            if (photos.isNotEmpty) ...[
-                              const SizedBox(height: 12),
-                              SizedBox(
-                                height: 150,
-                                child: ListView.separated(
-                                  scrollDirection: Axis.horizontal,
-                                  itemCount: photos.length,
-                                  separatorBuilder: (_, __) =>
-                                      const SizedBox(width: 10),
-                                  itemBuilder: (context, index) => ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Image.memory(
-                                      photos[index],
-                                      width: 150,
-                                      height: 150,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
+                  for (final entry in _entries)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _JournalEntryCard(
+                        date: _formatDate(entry['created_at'] as String),
+                        note: entry['note'] as String,
+                        photos: entry['photos'] as List<Uint8List>,
+                        onDelete: () => _deleteEntry(entry['id'] as int),
                       ),
-                    );
-                  }),
+                    ),
               ],
             ),
+    );
+  }
+}
+
+class _JournalEntryCard extends StatelessWidget {
+  const _JournalEntryCard({
+    required this.date,
+    required this.note,
+    required this.photos,
+    required this.onDelete,
+  });
+
+  final String date;
+  final String note;
+  final List<Uint8List> photos;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final koru = context.koru;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.event_rounded, size: 18, color: koru.hoja),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    date,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Eliminar entrada',
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+              ],
+            ),
+            if (note.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Text(note, style: theme.textTheme.bodyLarge),
+              ),
+            if (photos.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 150,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: photos.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) => ClipRRect(
+                    borderRadius: BorderRadius.circular(KoruRadius.m),
+                    child: Image.memory(
+                      photos[index],
+                      width: 150,
+                      height: 150,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

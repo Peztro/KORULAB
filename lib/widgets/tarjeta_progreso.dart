@@ -83,11 +83,6 @@ class _ProgressCardState extends State<ProgressCard> {
       animation: progressStats,
       builder: (context, _) {
         return Card(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          elevation: 3,
-          color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.15),
           child: Column(
             children: [
               ListTile(

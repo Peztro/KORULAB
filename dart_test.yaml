@@ -1,0 +1,6 @@
+# Las pruebas de test/visual generan capturas para revisar el diseño.
+# No se ejecutan por defecto. Para regenerarlas:
+#   flutter test test/visual --update-goldens --run-skipped
+tags:
+  visual:
+    skip: "Capturas de diseño: usa --run-skipped --update-goldens"

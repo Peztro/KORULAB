@@ -1,6 +1,6 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../servicio_bd.dart';
+import 'imagen_perfil.dart';
 import '../pagina_perfil_publico.dart';
 
 class DiscussionReply {
@@ -8,7 +8,7 @@ class DiscussionReply {
   final String author;
   final String authorHandle;
   final String authorRole;
-  final Uint8List? authorPhoto;
+  final ImagenPerfil? authorPhoto;
   final String message;
   final DateTime createdAt;
 
@@ -31,7 +31,7 @@ class DiscussionSpace {
   final String author;
   final String authorHandle;
   final String authorRole;
-  final Uint8List? authorPhoto;
+  final ImagenPerfil? authorPhoto;
   final DateTime createdAt;
   final List<DiscussionReply> replies;
 
@@ -55,7 +55,7 @@ void openPublicProfile(
   BuildContext context, {
   required String handle,
   required String name,
-  Uint8List? photo,
+  ImagenPerfil? photo,
 }) {
   if (handle.isEmpty) return;
   Navigator.push(

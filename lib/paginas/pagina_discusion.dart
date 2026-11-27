@@ -1,6 +1,8 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../servicio_bd.dart';
+import '../modelos/imagen_perfil.dart';
+import '../tema/tema_korulab.dart';
+import '../widgets/ui_koru.dart';
 import '../modelos/modelos_discusion.dart';
 
 class DiscussionPage extends StatefulWidget {
@@ -8,7 +10,7 @@ class DiscussionPage extends StatefulWidget {
   final String username;
   final String displayName;
   final String userRole;
-  final Uint8List? authorPhoto;
+  final ImagenPerfil? authorPhoto;
   final bool isAdmin;
   final bool isTeacher;
 
@@ -282,15 +284,68 @@ class _DiscussionPageState extends State<DiscussionPage> {
     super.dispose();
   }
 
+  Widget _authorRow(
+    ThemeData theme, {
+    required String name,
+    required String handle,
+    required String role,
+    required ImagenPerfil? photo,
+    double radius = 20,
+    Widget? trailing,
+  }) {
+    return Row(
+      children: [
+        GestureDetector(
+          onTap: () => openPublicProfile(
+            context,
+            handle: handle,
+            name: name,
+            photo: photo,
+          ),
+          child: KoruAvatar(image: photo?.provider, name: name, radius: radius),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      name,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  RoleBadge(role),
+                ],
+              ),
+              if (handle.isNotEmpty)
+                Text(
+                  '@$handle',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        ?trailing,
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final space = widget.space;
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Espacio de discusión'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
+        title: const Text('Discusión'),
         actions: [
           if (_canManageSpace)
             PopupMenuButton<String>(
@@ -313,199 +368,121 @@ class _DiscussionPageState extends State<DiscussionPage> {
         children: [
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
               children: [
-                Text(
-                  widget.space.title,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  widget.space.description,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => openPublicProfile(
-                        context,
-                        handle: widget.space.authorHandle,
-                        name: widget.space.author,
-                        photo: widget.space.authorPhoto,
-                      ),
-                      child: CircleAvatar(
-                        radius: 20,
-                        backgroundColor: theme.colorScheme.primaryContainer,
-                        backgroundImage: widget.space.authorPhoto == null
-                            ? null
-                            : MemoryImage(widget.space.authorPhoto!),
-                        child: widget.space.authorPhoto == null
-                            ? Icon(
-                                Icons.person,
-                                color: theme.colorScheme.onPrimaryContainer,
-                              )
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.space.author,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: theme.colorScheme.onSurface,
-                            ),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _authorRow(
+                          theme,
+                          name: space.author,
+                          handle: space.authorHandle,
+                          role: space.authorRole,
+                          photo: space.authorPhoto,
+                          radius: 22,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(space.title, style: theme.textTheme.headlineSmall),
+                        const SizedBox(height: 8),
+                        Text(
+                          space.description,
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
-                          if (widget.space.authorHandle.isNotEmpty)
-                            Text(
-                              '@${widget.space.authorHandle}',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          Text(
-                            DBService.roleLabel(widget.space.authorRole),
-                            style: theme.textTheme.labelSmall?.copyWith(
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SectionTitle(
+                  space.replies.length == 1
+                      ? '1 respuesta'
+                      : '${space.replies.length} respuestas',
+                ),
+                if (space.replies.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Column(
+                      children: [
+                        IconTile(
+                          icon: Icons.forum_rounded,
+                          color: context.koru.agua,
+                          size: 56,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Todavía no hay respuestas.\nSé el primero en participar.',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  for (final reply in space.replies) _replyBubble(theme, reply),
+              ],
+            ),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              border: Border(
+                top: BorderSide(color: theme.colorScheme.outlineVariant),
+              ),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _replyController,
+                        maxLines: 4,
+                        minLines: 1,
+                        textInputAction: TextInputAction.newline,
+                        decoration: InputDecoration(
+                          hintText: 'Escribe una respuesta...',
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide(
                               color: theme.colorScheme.primary,
                             ),
                           ),
-                        ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      onPressed: _submitReply,
+                      icon: const Icon(Icons.send_rounded),
+                      tooltip: 'Responder',
+                      style: IconButton.styleFrom(
+                        minimumSize: const Size(48, 48),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 24),
-                Text(
-                  'Respuestas (${widget.space.replies.length})',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (widget.space.replies.isEmpty)
-                  Text(
-                    'Todavía no hay respuestas. Sé el primero en participar.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  )
-                else
-                  ...widget.space.replies.map((reply) {
-                    final canManageReply = _canManageReply(reply);
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      color: theme.colorScheme.surfaceContainerHighest
-                          .withValues(alpha: 0.65),
-                      child: ListTile(
-                        leading: GestureDetector(
-                          onTap: () => openPublicProfile(
-                            context,
-                            handle: reply.authorHandle,
-                            name: reply.author,
-                            photo: reply.authorPhoto,
-                          ),
-                          child: CircleAvatar(
-                            backgroundImage: reply.authorPhoto == null
-                                ? null
-                                : MemoryImage(reply.authorPhoto!),
-                            backgroundColor: theme.colorScheme.primary
-                                .withValues(alpha: 0.2),
-                            child: reply.authorPhoto == null
-                                ? Icon(
-                                    Icons.person,
-                                    color: theme.colorScheme.primaryContainer,
-                                  )
-                                : null,
-                          ),
-                        ),
-                        title: Text(
-                          reply.author,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(reply.message),
-                              if (reply.authorHandle.isNotEmpty) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  '@${reply.authorHandle}',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                              Text(
-                                DBService.roleLabel(reply.authorRole),
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: theme.colorScheme.primary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        trailing: canManageReply
-                            ? PopupMenuButton<String>(
-                                tooltip: 'Administrar comentario',
-                                onSelected: (action) {
-                                  if (action == 'edit') _editReply(reply);
-                                  if (action == 'delete') _deleteReply(reply);
-                                },
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(
-                                    value: 'edit',
-                                    child: Text('Editar comentario'),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'delete',
-                                    child: Text('Eliminar comentario'),
-                                  ),
-                                ],
-                              )
-                            : null,
-                      ),
-                    );
-                  }),
-              ],
-            ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _replyController,
-                      maxLines: 3,
-                      minLines: 1,
-                      textInputAction: TextInputAction.newline,
-                      decoration: const InputDecoration(
-                        hintText: 'Escribe una respuesta...',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    onPressed: _submitReply,
-                    icon: const Icon(Icons.send),
-                    tooltip: 'Responder',
-                  ),
-                ],
               ),
             ),
           ),
@@ -513,5 +490,65 @@ class _DiscussionPageState extends State<DiscussionPage> {
       ),
     );
   }
-}
 
+  Widget _replyBubble(ThemeData theme, DiscussionReply reply) {
+    final canManageReply = _canManageReply(reply);
+    final mine =
+        DBService.normalizeUsername(reply.authorHandle) ==
+        DBService.normalizeUsername(widget.username);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 4, 14),
+        decoration: BoxDecoration(
+          color: mine
+              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.55)
+              : theme.colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(KoruRadius.l),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _authorRow(
+              theme,
+              name: reply.author,
+              handle: reply.authorHandle,
+              role: reply.authorRole,
+              photo: reply.authorPhoto,
+              radius: 16,
+              trailing: canManageReply
+                  ? PopupMenuButton<String>(
+                      tooltip: 'Administrar comentario',
+                      icon: Icon(
+                        Icons.more_horiz_rounded,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      onSelected: (action) {
+                        if (action == 'edit') _editReply(reply);
+                        if (action == 'delete') _deleteReply(reply);
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: Text('Editar comentario'),
+                        ),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Eliminar comentario'),
+                        ),
+                      ],
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 42, right: 10),
+              child: Text(reply.message, style: theme.textTheme.bodyLarge),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

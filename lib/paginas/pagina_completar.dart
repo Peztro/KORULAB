@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../tema/tema_korulab.dart';
+import '../widgets/actividad_ui.dart';
 import '../servicio_comentarios.dart';
 import '../modelos/modelos_curso.dart';
 import '../paginas/pagina_curso.dart';
@@ -82,9 +84,6 @@ class _FillBlankPageState extends State<FillBlankPage> {
         unawaited(vibrateOnWrongAnswer());
       }
     });
-    if (question.answerIndex != index) {
-      showWrongAnswerNotice(context, question.options[question.answerIndex]);
-    }
   }
 
   void _useHint() {
@@ -133,206 +132,158 @@ class _FillBlankPageState extends State<FillBlankPage> {
   }
 
   @override
-  Widget build(BuildContext context) => LeaveLessonGuard(
-    active: !completed,
-    child: _buildScaffold(context),
-  );
+  Widget build(BuildContext context) =>
+      LeaveLessonGuard(active: !completed, child: _buildScaffold(context));
 
   Widget _buildScaffold(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: Text(widget.activity.title),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: completed
-            ? ResultScreen(
-                score: score,
-                total: widget.activity.questions.length,
-                incorrectAttempts: incorrectAttempts,
-                onRetry: _reset,
-                activityName: widget.activity.title,
-              )
-            : _buildBody(),
+      appBar: AppBar(title: Text(widget.activity.title)),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: completed
+              ? ResultScreen(
+                  score: score,
+                  total: widget.activity.questions.length,
+                  incorrectAttempts: incorrectAttempts,
+                  onRetry: _reset,
+                  activityName: widget.activity.title,
+                )
+              : _buildBody(),
+        ),
       ),
     );
   }
 
   Widget _buildBody() {
     final theme = Theme.of(context);
+    final koru = context.koru;
     final q = shuffledQuestions[currentQuestionIndex];
     final sentenceParts = q.sentence.split('___');
     final String part1 = sentenceParts.isNotEmpty ? sentenceParts[0] : '';
     final String part2 = sentenceParts.length > 1 ? sentenceParts[1] : '';
+    final answered = selectedOptionIndex != null;
+    final isRight = answered && q.answerIndex == selectedOptionIndex;
+    final blankColor = !answered
+        ? koru.hoja
+        : isRight
+        ? koru.hoja
+        : theme.colorScheme.error;
+    final canRetry = answered && !isRight && progressStats.secondChances > 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        LinearProgressIndicator(
-          value: (currentQuestionIndex + 1) / shuffledQuestions.length,
-          backgroundColor: theme.colorScheme.outlineVariant,
-          color: theme.colorScheme.primaryContainer,
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Pregunta ${currentQuestionIndex + 1} de ${shuffledQuestions.length}',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 24),
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-            ),
-          ),
-          child: RichText(
-            textAlign: TextAlign.center,
-            text: TextSpan(
-              style: theme.textTheme.titleLarge?.copyWith(
-                height: 1.6,
-                color: theme.colorScheme.onSurface,
-              ),
-              children: [
-                TextSpan(text: part1),
-                WidgetSpan(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    margin: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: selectedOptionIndex == null
-                          ? theme.colorScheme.surfaceContainerHighest
-                          : (q.answerIndex == selectedOptionIndex
-                                ? Colors.green.shade800
-                                : Colors.red.shade800),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: selectedOptionIndex == null
-                            ? theme.colorScheme.outline
-                            : (q.answerIndex == selectedOptionIndex
-                                  ? Colors.green.shade400
-                                  : Colors.red.shade400),
-                        width: 2,
-                      ),
-                    ),
-                    child: Text(
-                      selectedOptionIndex == null
-                          ? ' ____ '
-                          : q.options[selectedOptionIndex!],
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurface,
-                      ),
-                    ),
-                  ),
-                ),
-                TextSpan(text: part2),
-              ],
-            ),
-          ),
-        ),
-        Align(
-          alignment: Alignment.centerRight,
-          child:
-              selectedOptionIndex != null &&
-                  q.answerIndex != selectedOptionIndex &&
-                  progressStats.secondChances > 0
-              ? TextButton.icon(
+        ActivityProgressHeader(
+          current: currentQuestionIndex + 1,
+          total: shuffledQuestions.length,
+          label: 'Frase',
+          trailing: canRetry
+              ? HelperChip(
+                  icon: Icons.replay_rounded,
+                  label: 'Segundo intento (${progressStats.secondChances})',
                   onPressed: _useSecondChance,
-                  icon: const Icon(Icons.replay),
-                  label: Text(
-                    'Segundo intento (${progressStats.secondChances})',
-                  ),
                 )
-              : TextButton.icon(
+              : HelperChip(
+                  icon: Icons.lightbulb_rounded,
+                  label: 'Pista (${progressStats.hintCredits})',
                   onPressed:
-                      selectedOptionIndex != null ||
+                      answered ||
                           _hintedOptionIndex != null ||
                           progressStats.hintCredits == 0
                       ? null
                       : _useHint,
-                  icon: const Icon(Icons.lightbulb_outline),
-                  label: Text('Pista (${progressStats.hintCredits})'),
                 ),
         ),
-        const SizedBox(height: 40),
-        ...List.generate(q.options.length, (index) {
-          final option = q.options[index];
-          final isSelected = selectedOptionIndex == index;
-          final isCorrect = q.answerIndex == index;
-          final isEliminated = _hintedOptionIndex == index;
-          Color? cardColor;
-          Color? textColor;
-          if (selectedOptionIndex != null) {
-            if (isSelected && isCorrect) {
-              cardColor = Colors.green.shade800;
-              textColor = Colors.white;
-            } else if (isSelected && !isCorrect) {
-              cardColor = Colors.red.shade800;
-              textColor = Colors.white;
-            }
-          }
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isEliminated
-                    ? theme.colorScheme.outlineVariant
-                    : cardColor ??
-                          theme.colorScheme.surfaceContainerHighest.withValues(
-                            alpha: 0.5,
-                          ),
-                foregroundColor: isEliminated
-                    ? theme.colorScheme.onSurfaceVariant
-                    : textColor ?? theme.colorScheme.onSurface,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 16,
-                  horizontal: 14,
+        const SizedBox(height: 16),
+        Expanded(
+          child: ListView(
+            children: [
+              Text(
+                'Completa la frase',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: isSelected
-                        ? theme.colorScheme.primaryContainer
-                        : Colors.transparent,
-                    width: 2,
+              ),
+              const SizedBox(height: 8),
+              PromptCard(
+                icon: Icons.edit_note_rounded,
+                child: RichText(
+                  text: TextSpan(
+                    style: theme.textTheme.titleLarge?.copyWith(height: 1.6),
+                    children: [
+                      TextSpan(text: part1),
+                      WidgetSpan(
+                        alignment: PlaceholderAlignment.middle,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 2,
+                          ),
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            color: blankColor.withValues(
+                              alpha: answered ? 0.18 : 0.08,
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border(
+                              bottom: BorderSide(color: blankColor, width: 3),
+                            ),
+                          ),
+                          child: Text(
+                            answered
+                                ? q.options[selectedOptionIndex!]
+                                : '      ',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              color: answered
+                                  ? blankColor
+                                  : theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      ),
+                      TextSpan(text: part2),
+                    ],
                   ),
                 ),
               ),
-              onPressed: isEliminated ? null : () => _selectOption(index),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  isEliminated ? '$option  ·  Descartada' : option,
-                  style: const TextStyle(fontSize: 16),
+              const SizedBox(height: 20),
+              for (var index = 0; index < q.options.length; index++)
+                AnswerOption(
+                  index: index,
+                  text: q.options[index],
+                  estado: _hintedOptionIndex == index
+                      ? EstadoOpcion.descartada
+                      : selectedOptionIndex == index
+                      ? (q.answerIndex == index
+                            ? EstadoOpcion.correcta
+                            : EstadoOpcion.incorrecta)
+                      : EstadoOpcion.normal,
+                  onTap: _hintedOptionIndex == index || answered
+                      ? null
+                      : () => _selectOption(index),
                 ),
-              ),
-            ),
-          );
-        }),
-        const Spacer(),
-        FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: theme.colorScheme.primaryContainer,
-            foregroundColor: theme.colorScheme.onPrimaryContainer,
+            ],
           ),
-          onPressed: selectedOptionIndex == null ? null : _nextQuestion,
-          child: Text(
-            currentQuestionIndex + 1 == shuffledQuestions.length
-                ? 'Finalizar'
-                : 'Siguiente',
-          ),
+        ),
+        const SizedBox(height: 12),
+        AnswerFooter(
+          feedback: !answered
+              ? null
+              : isRight
+              ? const FeedbackRespuesta.correcta()
+              : FeedbackRespuesta.incorrecta(
+                  'Respuesta correcta: ${q.options[q.answerIndex]}',
+                ),
+          label: currentQuestionIndex + 1 == shuffledQuestions.length
+              ? 'Finalizar'
+              : 'Siguiente',
+          icon: currentQuestionIndex + 1 == shuffledQuestions.length
+              ? Icons.flag_rounded
+              : Icons.arrow_forward_rounded,
+          onPressed: answered ? _nextQuestion : null,
         ),
       ],
     );

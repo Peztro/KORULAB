@@ -7,6 +7,9 @@ import '../modelos/modelos_curso.dart';
 import '../servicios/estadisticas_progreso.dart';
 import '../paginas_soporte.dart';
 import '../cursos_docentes.dart';
+import '../paginas/pagina_curso.dart';
+import '../tema/tema_korulab.dart';
+import '../widgets/sendero.dart';
 
 class RutaEkoPage extends StatefulWidget {
   final String username;
@@ -141,12 +144,7 @@ class _RutaEkoPageState extends State<RutaEkoPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Ruta Eko'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
+      appBar: AppBar(title: const Text('Ruta Eko')),
       body: AnimatedBuilder(
         animation: progressStats,
         builder: (context, _) {
@@ -158,77 +156,40 @@ class _RutaEkoPageState extends State<RutaEkoPage> {
             onRefresh: _loadTeacherLessons,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
               children: [
                 if (_lessonLoadError != null || _realtimeError != null)
-                  Card(
-                    color: theme.colorScheme.errorContainer,
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(
-                        _lessonLoadError ?? _realtimeError!,
-                        style: TextStyle(
-                          color: theme.colorScheme.onErrorContainer,
-                        ),
-                      ),
-                    ),
-                  ),
-                ...[
-                  const SizedBox(height: 20),
-                  Text(
-                    'Sendero de Ruta Eko',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Completa cada unidad para desbloquear la siguiente.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (_trailUnits.isEmpty)
-                    const Card(
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Card(
+                      color: theme.colorScheme.errorContainer,
                       child: Padding(
-                        padding: EdgeInsets.all(20),
+                        padding: const EdgeInsets.all(14),
                         child: Text(
-                          'El sendero se está preparando. Inicia sesión con '
-                          'la cuenta docente p.yuli y abre Ruta Eko una vez '
-                          'para migrar el contenido inicial.',
-                          textAlign: TextAlign.center,
+                          _lessonLoadError ?? _realtimeError!,
+                          style: TextStyle(
+                            color: theme.colorScheme.onErrorContainer,
+                          ),
                         ),
                       ),
-                    )
-                  else ...[
-                    _UnitTrailProgress(units: _trailUnits),
-                    const SizedBox(height: 16),
-                    for (final entry in _trailUnits.indexed)
-                      if (entry.$2.course != null)
-                        TeacherCourseCard(
-                          row: entry.$2.row,
-                          courseOverride: entry.$2.course,
-                          username: widget.username,
-                          onChanged: _loadTeacherLessons,
-                          unitNumber: entry.$1 + 1,
-                          isUnlocked:
-                              entry.$1 == 0 ||
-                              _trailUnits[entry.$1 - 1].isCompleted,
-                        )
-                      else
-                        _TeacherLessonCard(
-                          unitNumber: entry.$1 + 1,
-                          lesson: entry.$2.row,
-                          username: widget.username,
-                          onChanged: _loadTeacherLessons,
-                          isUnlocked:
-                              entry.$1 == 0 ||
-                              _trailUnits[entry.$1 - 1].isCompleted,
-                        ),
-                  ],
-                ],
+                    ),
+                  ),
+                _UnitTrailProgress(units: _trailUnits),
+                const SizedBox(height: 8),
+                if (_trailUnits.isEmpty)
+                  const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Text(
+                        'El sendero se está preparando. Inicia sesión con '
+                        'la cuenta docente p.yuli y abre Ruta Eko una vez '
+                        'para migrar el contenido inicial.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  )
+                else
+                  SenderoRutaEko(paradas: _buildStops(context)),
               ],
             ),
           );
@@ -236,164 +197,96 @@ class _RutaEkoPageState extends State<RutaEkoPage> {
       ),
     );
   }
-}
 
-class _TeacherLessonCard extends StatelessWidget {
-  final int unitNumber;
-  final Map<String, dynamic> lesson;
-  final String username;
-  final Future<void> Function() onChanged;
-  final bool isUnlocked;
+  /// Convierte las unidades en paradas del sendero.
+  List<ParadaSendero> _buildStops(BuildContext context) {
+    final stops = <ParadaSendero>[];
+    var currentAssigned = false;
+    for (final (index, unit) in _trailUnits.indexed) {
+      final unlocked = index == 0 || _trailUnits[index - 1].isCompleted;
+      final completed = unit.isCompleted;
+      final EstadoParada estado;
+      if (completed) {
+        estado = EstadoParada.completada;
+      } else if (unlocked && !currentAssigned) {
+        estado = EstadoParada.actual;
+        currentAssigned = true;
+      } else if (unlocked) {
+        estado = EstadoParada.disponible;
+      } else {
+        estado = EstadoParada.bloqueada;
+      }
 
-  const _TeacherLessonCard({
-    required this.unitNumber,
-    required this.lesson,
-    required this.username,
-    required this.onChanged,
-    required this.isUnlocked,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final lessonId = lesson['id'] as int;
-    final isCompleted = progressStats.isTeacherLessonCompleted(lessonId);
-    final nodeColor = isCompleted || isUnlocked
-        ? theme.colorScheme.primary
-        : theme.colorScheme.outlineVariant;
-    final card = Card(
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      color: isUnlocked
-          ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.75)
-          : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: isUnlocked
-            ? () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => _TeacherLessonPage(lesson: lesson),
-                ),
-              )
-            : () => ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Completa la unidad ${unitNumber - 1} para desbloquear esta.',
-                  ),
-                ),
-              ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'UNIDAD $unitNumber',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: nodeColor,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                lesson['title'] as String,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: isUnlocked
-                      ? theme.colorScheme.onSurface
-                      : theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                lesson['summary'] as String,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: LinearProgressIndicator(
-                      value: isCompleted ? 1 : 0,
-                      minHeight: 6,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    isCompleted ? '100%' : '0%',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      lesson['teacher_name'] as String? ?? 'Profesor',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  if (lesson['can_manage'] == true)
-                    TeacherLessonMenu(
-                      lesson: lesson,
-                      username: username,
-                      onChanged: onChanged,
-                    ),
-                ],
-              ),
-            ],
+      void locked() => ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('Completa la unidad $index para desbloquear esta.'),
           ),
-        ),
-      ),
-    );
-    return Row(
-      children: [
-        SizedBox(
-          width: 52,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Positioned.fill(
-                child: Center(
-                  child: Container(
-                    width: 4,
-                    color: nodeColor.withValues(alpha: 0.6),
-                  ),
-                ),
-              ),
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: nodeColor,
-                foregroundColor: theme.colorScheme.onPrimary,
-                child: Icon(
-                  isCompleted
-                      ? Icons.check
-                      : isUnlocked
-                      ? Icons.eco_outlined
-                      : Icons.lock_outline,
-                  size: 22,
-                ),
-              ),
-            ],
+        );
+
+      final course = unit.course;
+      if (course != null) {
+        final total = course.activities.length;
+        final done = course.activities
+            .where(progressStats.isActivityCompleted)
+            .length;
+        stops.add(
+          ParadaSendero(
+            titulo: course.title,
+            subtitulo: course.subtitle,
+            detalle: total == 0
+                ? 'Sin actividades'
+                : '$done/$total actividades',
+            estado: estado,
+            progreso: total == 0 ? 0 : done / total,
+            onTap: unlocked
+                ? () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          CoursePage(course: course, courseIndex: -1),
+                    ),
+                  )
+                : locked,
+            menu: unit.row['can_manage'] == true
+                ? TeacherCourseMenu(
+                    row: unit.row,
+                    username: widget.username,
+                    onChanged: _loadTeacherLessons,
+                  )
+                : null,
           ),
-        ),
-        Expanded(child: card),
-      ],
-    );
+        );
+      } else {
+        final lesson = unit.row;
+        stops.add(
+          ParadaSendero(
+            titulo: lesson['title'] as String,
+            subtitulo: lesson['summary'] as String? ?? '',
+            detalle: completed ? 'Lección completada' : 'Lección',
+            estado: estado,
+            progreso: completed ? 1 : 0,
+            onTap: unlocked
+                ? () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => _TeacherLessonPage(lesson: lesson),
+                    ),
+                  )
+                : locked,
+            menu: lesson['can_manage'] == true
+                ? TeacherLessonMenu(
+                    lesson: lesson,
+                    username: widget.username,
+                    onChanged: _loadTeacherLessons,
+                  )
+                : null,
+          ),
+        );
+      }
+    }
+    return stops;
   }
 }
 
@@ -448,23 +341,65 @@ class _UnitTrailProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final koru = context.koru;
     final completedUnits = units.where((unit) => unit.isCompleted).length;
-    return Card(
-      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${completedUnits} de ${units.length} unidades completadas'),
-            const SizedBox(height: 10),
-            LinearProgressIndicator(
-              value: units.isEmpty ? 0 : completedUnits / units.length,
-              minHeight: 8,
-              borderRadius: BorderRadius.circular(8),
+    final ratio = units.isEmpty ? 0.0 : completedUnits / units.length;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: koru.degradadoHero,
+        borderRadius: BorderRadius.circular(KoruRadius.xl),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Sendero de Ruta Eko',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: koru.textoHero,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Completa cada unidad para abrir la siguiente.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: koru.textoHero.withValues(alpha: 0.85),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: ratio,
+                    minHeight: 8,
+                    color: koru.textoHero,
+                    backgroundColor: Colors.black.withValues(alpha: 0.2),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '$completedUnits de ${units.length} unidades',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: koru.textoHero,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 16),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.2),
+            ),
+            child: Icon(Icons.route_rounded, size: 34, color: koru.textoHero),
+          ),
+        ],
       ),
     );
   }
@@ -567,11 +502,7 @@ class _TeacherLessonPage extends StatelessWidget {
     final lessonId = lesson['id'] as int;
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: Text(lesson['title'] as String),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
+      appBar: AppBar(title: Text(lesson['title'] as String)),
       body: AnimatedBuilder(
         animation: progressStats,
         builder: (context, _) {

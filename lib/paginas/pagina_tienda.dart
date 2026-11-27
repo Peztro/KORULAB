@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../servicios/estadisticas_progreso.dart';
+import '../tema/tema_korulab.dart';
+import '../widgets/ui_koru.dart';
 
 class RewardShopPage extends StatefulWidget {
   static const int hintPrice = 25;
@@ -16,14 +18,6 @@ class RewardShopPage extends StatefulWidget {
 }
 
 class _RewardShopPageState extends State<RewardShopPage> {
-  final _pageController = PageController(viewportFraction: 0.82);
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
   @override
   void initState() {
     super.initState();
@@ -31,92 +25,81 @@ class _RewardShopPageState extends State<RewardShopPage> {
   }
 
   void _showPurchaseResult(bool purchased, String itemName) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          purchased
-              ? '$itemName añadido a tu inventario.'
-              : 'No tienes suficientes ekostrellas.',
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            purchased
+                ? '$itemName añadido a tu inventario.'
+                : 'No tienes suficientes ekostrellas.',
+          ),
         ),
-      ),
-    );
+      );
   }
 
-  Widget _buildProductCard({
-    required IconData icon,
-    required String title,
-    required String description,
-    required int price,
-    required int owned,
-    required VoidCallback onPurchase,
-  }) {
-    final theme = Theme.of(context);
-    final canAfford = progressStats.ekostrellas >= price;
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.65),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.18),
-                  child: Icon(icon, color: theme.colorScheme.primaryContainer),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
-                ),
-                Text('Tienes $owned'),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              description,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: canAfford ? onPurchase : null,
-                icon: const Icon(Icons.shopping_bag_outlined),
-                label: Text('Canjear por $price ekostrellas'),
-              ),
-            ),
-          ],
+  List<_ShopProduct> _products(BuildContext context) {
+    final koru = context.koru;
+    return [
+      _ShopProduct(
+        icon: Icons.lightbulb_rounded,
+        color: koru.oro,
+        title: 'Pista',
+        description: 'Descarta una opción incorrecta en quizzes y frases.',
+        price: RewardShopPage.hintPrice,
+        owned: progressStats.hintCredits,
+        onPurchase: () => _showPurchaseResult(progressStats.buyHint(), 'Pista'),
+      ),
+      _ShopProduct(
+        icon: Icons.auto_awesome_rounded,
+        color: koru.agua,
+        title: 'Doble de ekostrellas',
+        description: 'Duplica las estrellas de tu próxima actividad.',
+        price: RewardShopPage.starMultiplierPrice,
+        owned: progressStats.starMultipliers,
+        onPurchase: () => _showPurchaseResult(
+          progressStats.buyStarMultiplier(),
+          'Doble de ekostrellas',
         ),
       ),
-    );
+      _ShopProduct(
+        icon: Icons.replay_rounded,
+        color: koru.hoja,
+        title: 'Segundo intento',
+        description: 'Vuelve a elegir tras una respuesta incorrecta.',
+        price: RewardShopPage.secondChancePrice,
+        owned: progressStats.secondChances,
+        onPurchase: () => _showPurchaseResult(
+          progressStats.buySecondChance(),
+          'Segundo intento',
+        ),
+      ),
+      _ShopProduct(
+        icon: Icons.shield_rounded,
+        color: koru.fuego,
+        title: 'Protector de racha',
+        description: 'Cuida tu racha un día que no completes lecciones.',
+        price: RewardShopPage.streakProtectorPrice,
+        owned: progressStats.streakProtectors,
+        onPurchase: () => _showPurchaseResult(
+          progressStats.buyStreakProtector(),
+          'Protector de racha',
+        ),
+      ),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        backgroundColor: theme.colorScheme.surface,
         appBar: AppBar(
-          title: const Text('Tienda de recompensas'),
-          backgroundColor: theme.colorScheme.primary,
-          foregroundColor: theme.colorScheme.onPrimary,
+          title: const Text('Tienda'),
           bottom: const TabBar(
             tabs: [
-              Tab(icon: Icon(Icons.storefront_outlined), text: 'Tienda'),
-              Tab(icon: Icon(Icons.inventory_2_outlined), text: 'Inventario'),
+              Tab(text: 'Tienda'),
+              Tab(text: 'Inventario'),
             ],
           ),
         ),
@@ -126,58 +109,11 @@ class _RewardShopPageState extends State<RewardShopPage> {
             if (!progressStats.isCourseProgressLoaded) {
               return const Center(child: CircularProgressIndicator());
             }
-            final products = <_ShopProduct>[
-              _ShopProduct(
-                icon: Icons.lightbulb_outline,
-                title: 'Pista para una pregunta',
-                description:
-                    'Elimina una opción incorrecta en quizzes y actividades de completar.',
-                price: RewardShopPage.hintPrice,
-                owned: progressStats.hintCredits,
-                onPurchase: () =>
-                    _showPurchaseResult(progressStats.buyHint(), 'Pista'),
-              ),
-              _ShopProduct(
-                icon: Icons.stars_outlined,
-                title: 'Doble de ekostrellas',
-                description:
-                    'Duplica las ekostrellas de la próxima actividad que completes.',
-                price: RewardShopPage.starMultiplierPrice,
-                owned: progressStats.starMultipliers,
-                onPurchase: () => _showPurchaseResult(
-                  progressStats.buyStarMultiplier(),
-                  'Doble de ekostrellas',
-                ),
-              ),
-              _ShopProduct(
-                icon: Icons.replay,
-                title: 'Segundo intento',
-                description:
-                    'Después de una respuesta incorrecta, permite elegir de nuevo en quizzes y ejercicios de completar.',
-                price: RewardShopPage.secondChancePrice,
-                owned: progressStats.secondChances,
-                onPurchase: () => _showPurchaseResult(
-                  progressStats.buySecondChance(),
-                  'Segundo intento',
-                ),
-              ),
-              _ShopProduct(
-                icon: Icons.shield_outlined,
-                title: 'Protector de racha',
-                description:
-                    'Se activa automáticamente por cada día que no completes una lección.',
-                price: RewardShopPage.streakProtectorPrice,
-                owned: progressStats.streakProtectors,
-                onPurchase: () => _showPurchaseResult(
-                  progressStats.buyStreakProtector(),
-                  'Protector de racha',
-                ),
-              ),
-            ];
+            final products = _products(context);
             return TabBarView(
               children: [
-                _buildShopTab(theme, products),
-                _buildInventoryTab(theme, products),
+                _buildShopTab(context, products),
+                _buildInventoryTab(context, products),
               ],
             );
           },
@@ -186,63 +122,105 @@ class _RewardShopPageState extends State<RewardShopPage> {
     );
   }
 
-  Widget _buildShopTab(ThemeData theme, List<_ShopProduct> products) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildShopTab(BuildContext context, List<_ShopProduct> products) {
+    final theme = Theme.of(context);
+    final koru = context.koru;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: koru.degradadoHero,
+            borderRadius: BorderRadius.circular(KoruRadius.xl),
+          ),
+          child: Row(
             children: [
-              Text(
-                '${progressStats.ekostrellas} ekostrellas',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primaryContainer,
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black.withValues(alpha: 0.2),
+                ),
+                child: const Icon(
+                  Icons.star_rounded,
+                  size: 34,
+                  color: Color(0xFFFFD66B),
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Desliza para ver los productos y canjea tus estrellas por ayudas.',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${progressStats.ekostrellas}',
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        color: koru.textoHero,
+                        height: 1.1,
+                      ),
+                    ),
+                    Text(
+                      'ekostrellas para canjear',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: koru.textoHero.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 20),
-        SizedBox(
-          height: 330,
-          child: PageView.builder(
-            controller: _pageController,
-            itemBuilder: (context, index) {
-              final product = products[index % products.length];
-              return _buildProductCard(
-                icon: product.icon,
-                title: product.title,
-                description: product.description,
-                price: product.price,
-                owned: product.owned,
-                onPurchase: product.onPurchase,
-              );
-            },
+        const SizedBox(height: 8),
+        const SectionTitle('Ayudas'),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: products.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            mainAxisExtent: 250,
           ),
+          itemBuilder: (context, index) =>
+              _ProductCard(product: products[index]),
         ),
       ],
     );
   }
 
-  Widget _buildInventoryTab(ThemeData theme, List<_ShopProduct> products) {
+  Widget _buildInventoryTab(BuildContext context, List<_ShopProduct> products) {
+    final theme = Theme.of(context);
     final owned = products.where((p) => p.owned > 0).toList();
     if (owned.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'Aún no tienes habilidades. Canjéalas en la tienda con tus ekostrellas.',
-            textAlign: TextAlign.center,
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconTile(
+                icon: Icons.inventory_2_rounded,
+                color: context.koru.hoja,
+                size: 72,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Tu inventario está vacío',
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Canjea ayudas en la tienda con tus ekostrellas.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
         ),
       );
@@ -251,25 +229,29 @@ class _RewardShopPageState extends State<RewardShopPage> {
       padding: const EdgeInsets.all(16),
       children: [
         for (final product in owned)
-          Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.18),
-                child: Icon(
-                  product.icon,
-                  color: theme.colorScheme.primaryContainer,
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: FeatureCard(
+              title: product.title,
+              subtitle: product.description,
+              icon: product.icon,
+              color: product.color,
+              onTap: () {},
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
                 ),
-              ),
-              title: Text(
-                product.title,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: Text(product.description),
-              trailing: Text(
-                '${product.owned}\n${product.owned == 1 ? 'unidad' : 'unidades'}',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.labelLarge,
+                decoration: BoxDecoration(
+                  color: product.color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'x${product.owned}',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: product.color,
+                  ),
+                ),
               ),
             ),
           ),
@@ -278,8 +260,90 @@ class _RewardShopPageState extends State<RewardShopPage> {
   }
 }
 
+class _ProductCard extends StatelessWidget {
+  const _ProductCard({required this.product});
+
+  final _ShopProduct product;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final canAfford = progressStats.ekostrellas >= product.price;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                IconTile(icon: product.icon, color: product.color, size: 46),
+                const Spacer(),
+                if (product.owned > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'Tienes ${product.owned}',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              product.title,
+              style: theme.textTheme.titleMedium,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            Expanded(
+              child: Text(
+                product.description,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: canAfford ? product.onPurchase : null,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 42),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.star_rounded, size: 18),
+                    const SizedBox(width: 4),
+                    Text('${product.price}'),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ShopProduct {
   final IconData icon;
+  final Color color;
   final String title;
   final String description;
   final int price;
@@ -288,6 +352,7 @@ class _ShopProduct {
 
   const _ShopProduct({
     required this.icon,
+    required this.color,
     required this.title,
     required this.description,
     required this.price,

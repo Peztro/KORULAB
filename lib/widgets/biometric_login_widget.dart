@@ -54,7 +54,7 @@ class _BiometricLoginWidgetState extends State<BiometricLoginWidget>
     setState(() {
       _availableBiometrics = available;
       if (available.isNotEmpty) {
-        _biometricType = BiometricAuthService.getBiometricName(available.first);
+        _biometricType = BiometricAuthService.nombreAmigable(available);
       }
     });
   }
@@ -103,7 +103,7 @@ class _BiometricLoginWidgetState extends State<BiometricLoginWidget>
         }
       }
     } catch (e) {
-      print('Error during authentication: $e');
+      debugPrint('Error during authentication: $e');
       setState(() {
         _authFailed = true;
         _isAuthenticating = false;
@@ -152,9 +152,9 @@ class _BiometricLoginWidgetState extends State<BiometricLoginWidget>
                 child: Icon(
                   _availableBiometrics.contains(BiometricType.face)
                       ? Icons.face
-                      : Icons.fingerprint,
+                      : Icons.fingerprint_rounded,
                   size: 40,
-                  color: Colors.white,
+                  color: theme.colorScheme.onPrimary,
                 ),
               ),
             ),
@@ -163,7 +163,7 @@ class _BiometricLoginWidgetState extends State<BiometricLoginWidget>
           // Título
           Text(
             'Desbloquea con $_biometricType',
-            style: theme.textTheme.headlineSmall?.copyWith(
+            style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -186,14 +186,14 @@ class _BiometricLoginWidgetState extends State<BiometricLoginWidget>
                 children: [
                   Icon(
                     Icons.check_circle,
-                    color: Colors.green,
+                    color: theme.colorScheme.primary,
                     size: 24,
                   ),
                   const SizedBox(width: 8),
                   Text(
                     'Autenticación exitosa',
                     style: TextStyle(
-                      color: Colors.green,
+                      color: theme.colorScheme.primary,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -207,14 +207,14 @@ class _BiometricLoginWidgetState extends State<BiometricLoginWidget>
                 children: [
                   Icon(
                     Icons.error_outline,
-                    color: Colors.red,
+                    color: theme.colorScheme.error,
                     size: 24,
                   ),
                   const SizedBox(width: 8),
                   Text(
                     'Autenticación fallida',
                     style: TextStyle(
-                      color: Colors.red,
+                      color: theme.colorScheme.error,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -248,10 +248,10 @@ class _BiometricLoginWidgetState extends State<BiometricLoginWidget>
               onPressed: _isAuthenticating ? () {} : _authenticate,
               isLoading: _isAuthenticating,
               backgroundColor: theme.colorScheme.primary,
-              foregroundColor: Colors.white,
+              foregroundColor: theme.colorScheme.onPrimary,
               icon: _availableBiometrics.contains(BiometricType.face)
                   ? Icons.face
-                  : Icons.fingerprint,
+                  : Icons.fingerprint_rounded,
               width: double.infinity,
             )
           else
@@ -260,9 +260,7 @@ class _BiometricLoginWidgetState extends State<BiometricLoginWidget>
               child: Text(
                 'Este dispositivo no soporta autenticación biométrica',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: theme.colorScheme.error,
-                ),
+                style: TextStyle(color: theme.colorScheme.error),
               ),
             ),
         ],
@@ -420,9 +418,10 @@ class _BiometricSettingsPanelState extends State<BiometricSettingsPanel> {
   }
 
   Future<void> _initBiometricSettings() async {
-    final available =
-        await BiometricAuthService.isBiometricAvailable();
-    final enabled = await BiometricAuthService.isBiometricEnabled();
+    final available = await BiometricAuthService.isBiometricAvailable();
+    final enabled = await BiometricAuthService.isBiometricEnabled(
+      widget.username,
+    );
     final biometrics = await BiometricAuthService.getAvailableBiometrics();
 
     setState(() {
@@ -437,7 +436,7 @@ class _BiometricSettingsPanelState extends State<BiometricSettingsPanel> {
 
     if (_biometricEnabled) {
       // Desactivar
-      await BiometricAuthService.clearBiometricData();
+      await BiometricAuthService.clearBiometricData(widget.username);
       setState(() {
         _biometricEnabled = false;
       });
@@ -448,7 +447,7 @@ class _BiometricSettingsPanelState extends State<BiometricSettingsPanel> {
         reason: 'Verifica tu identidad para habilitar login biométrico',
       ).then((authenticated) {
         if (authenticated) {
-          BiometricAuthService.saveBiometricPreference(true);
+          BiometricAuthService.saveBiometricPreference(true, widget.username);
           BiometricAuthService.saveBiometricUser(widget.username);
           setState(() {
             _biometricEnabled = true;
@@ -496,9 +495,13 @@ class _BiometricSettingsPanelState extends State<BiometricSettingsPanel> {
                           Text(
                             _availableBiometrics.isEmpty
                                 ? 'No disponible'
-                                : _availableBiometrics.map((b) {
-                                  return BiometricAuthService.getBiometricName(b);
-                                }).join(', '),
+                                : _availableBiometrics
+                                      .map((b) {
+                                        return BiometricAuthService.getBiometricName(
+                                          b,
+                                        );
+                                      })
+                                      .join(', '),
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
@@ -517,21 +520,23 @@ class _BiometricSettingsPanelState extends State<BiometricSettingsPanel> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.1),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         children: [
                           Icon(
                             Icons.check_circle,
-                            color: Colors.green,
+                            color: Theme.of(context).colorScheme.primary,
                             size: 18,
                           ),
                           const SizedBox(width: 8),
                           Text(
                             'Login biométrico habilitado para ${widget.username}',
                             style: TextStyle(
-                              color: Colors.green,
+                              color: Theme.of(context).colorScheme.primary,
                               fontSize: 12,
                             ),
                           ),

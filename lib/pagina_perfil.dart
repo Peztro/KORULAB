@@ -3,13 +3,20 @@ import 'dart:typed_data';
 import 'package:crop_your_image/crop_your_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show StorageException;
 
+import 'modelos/imagen_perfil.dart';
 import 'servicio_bd.dart';
+import 'servicios/sesion_actual.dart';
+import 'tema/tema_korulab.dart';
+import 'widgets/ui_koru.dart';
 
 class ProfilePage extends StatefulWidget {
   final String username;
-  final void Function(String displayName, String username, Uint8List? photo)?
-  onProfileChanged;
+
+  /// Se llama tras guardar. La foto y el nombre nuevos se publican además
+  /// en [SesionActual], así que cualquier pantalla que la escuche se actualiza.
+  final void Function(String displayName, String username)? onProfileChanged;
 
   const ProfilePage({super.key, required this.username, this.onProfileChanged});
 
@@ -30,8 +37,8 @@ class _ProfilePageState extends State<ProfilePage> {
   final _imagePicker = ImagePicker();
 
   late String _activeUsername;
-  Uint8List? _profilePhoto;
-  Uint8List? _banner;
+  ImagenPerfil? _profilePhoto;
+  ImagenPerfil? _banner;
   DateTime? _handleChangeAvailableAt;
   bool _canChangeHandle = false;
   bool _isAdmin = false;
@@ -54,27 +61,22 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
       if (profile != null) {
         _usernameController.text = DBService.normalizeUsername(
-          profile['username'] as String? ?? _activeUsername,
+          profile.username.isEmpty ? _activeUsername : profile.username,
         );
-        _displayNameController.text = profile['display_name'] as String? ?? '';
-        _ageController.text = profile['age']?.toString() ?? '';
-        _birthYearController.text = profile['birth_year']?.toString() ?? '';
-        _locationController.text = profile['location'] as String? ?? '';
-        _occupationController.text = profile['occupation'] as String? ?? '';
-        _bioController.text = profile['bio'] as String? ?? '';
-        _learningGoalController.text =
-            profile['learning_goal'] as String? ?? '';
-        _profilePhoto = profile['profile_photo'] as Uint8List?;
-        _banner = profile['banner'] as Uint8List?;
-        _gender = profile['gender'] as String?;
-        _isAdmin = (profile['is_admin'] as int? ?? 0) == 1;
-        _role = profile['role'] as String? ?? DBService.roleStudent;
-        final lastChange = DateTime.tryParse(
-          profile['handle_changed_at'] as String? ?? '',
-        );
-        final accountCreated = DateTime.tryParse(
-          profile['created_at'] as String? ?? '',
-        );
+        _displayNameController.text = profile.displayName;
+        _ageController.text = profile.age?.toString() ?? '';
+        _birthYearController.text = profile.birthYear?.toString() ?? '';
+        _locationController.text = profile.location;
+        _occupationController.text = profile.occupation;
+        _bioController.text = profile.bio;
+        _learningGoalController.text = profile.learningGoal;
+        _profilePhoto = profile.foto;
+        _banner = profile.banner;
+        _gender = profile.gender;
+        _isAdmin = profile.esAdmin;
+        _role = profile.role;
+        final lastChange = profile.handleChangedAt;
+        final accountCreated = profile.createdAt;
         final cooldownAnchor = lastChange ?? accountCreated;
         _handleChangeAvailableAt = cooldownAnchor?.add(
           const Duration(days: 60),
@@ -124,7 +126,7 @@ class _ProfilePageState extends State<ProfilePage> {
         MaterialPageRoute(builder: (_) => _PhotoCropPage(image: bytes)),
       );
       if (cropped != null && mounted) {
-        setState(() => _profilePhoto = cropped);
+        setState(() => _profilePhoto = ImagenPerfil.bytes(cropped));
         await _saveProfile();
       }
     } catch (_) {
@@ -150,7 +152,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       );
       if (cropped != null && mounted) {
-        setState(() => _banner = cropped);
+        setState(() => _banner = ImagenPerfil.bytes(cropped));
         await _saveProfile();
       }
     } catch (_) {
@@ -205,14 +207,26 @@ class _ProfilePageState extends State<ProfilePage> {
         _handleChangeAvailableAt = DateTime.now().add(const Duration(days: 60));
         _canChangeHandle = false;
       }
+      // Las imágenes nuevas ya están en Storage: usa sus URLs a partir de ahora.
+      final saved = SesionActual.instancia.perfil;
+      if (mounted && saved != null && saved.username == newUsername) {
+        setState(() {
+          _profilePhoto = saved.foto;
+          _banner = saved.banner;
+        });
+      }
       widget.onProfileChanged?.call(
         _displayNameController.text.trim(),
         newUsername,
-        _profilePhoto,
       );
       _showMessage('Perfil guardado.');
-    } catch (_) {
-      _showMessage('No se pudo guardar el perfil. Inténtalo de nuevo.');
+    } catch (error, stack) {
+      debugPrint('Error guardando el perfil: $error\n$stack');
+      _showMessage(
+        error is StorageException
+            ? 'No se pudo subir la imagen: ${error.message}'
+            : 'No se pudo guardar el perfil. Inténtalo de nuevo.',
+      );
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -259,7 +273,7 @@ class _ProfilePageState extends State<ProfilePage> {
         labelText: label,
         hintText: hint,
         prefixIcon: Icon(icon),
-        border: const OutlineInputBorder(),
+        alignLabelWithHint: maxLines > 1,
       ),
     );
   }
@@ -277,16 +291,224 @@ class _ProfilePageState extends State<ProfilePage> {
     super.dispose();
   }
 
+  /// Opciones al tocar la foto o el banner: cambiar o quitar.
+  Future<void> _showImageOptions({required bool banner}) async {
+    final hasImage = banner ? _banner != null : _profilePhoto != null;
+    if (!hasImage) {
+      banner ? await _pickBanner() : await _pickPhoto();
+      return;
+    }
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_rounded),
+                title: Text(banner ? 'Cambiar banner' : 'Cambiar foto'),
+                onTap: () => Navigator.pop(sheetContext, 'change'),
+              ),
+              ListTile(
+                leading: Icon(
+                  Icons.delete_outline_rounded,
+                  color: Theme.of(sheetContext).colorScheme.error,
+                ),
+                title: Text(banner ? 'Quitar banner' : 'Quitar foto'),
+                onTap: () => Navigator.pop(sheetContext, 'remove'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'change') {
+      banner ? await _pickBanner() : await _pickPhoto();
+    } else {
+      setState(() => banner ? _banner = null : _profilePhoto = null);
+      await _saveProfile();
+    }
+  }
+
+  Widget _section(
+    ThemeData theme, {
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 20, color: context.koru.hoja),
+                const SizedBox(width: 8),
+                Text(title, style: theme.textTheme.titleMedium),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _header(ThemeData theme) {
+    final koru = context.koru;
+    final name = _displayNameController.text.trim().isEmpty
+        ? '@$_activeUsername'
+        : _displayNameController.text.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 56),
+              child: GestureDetector(
+                onTap: _isSaving ? null : () => _showImageOptions(banner: true),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(KoruRadius.xl),
+                  child: AspectRatio(
+                    aspectRatio: 2.6,
+                    child: _banner == null
+                        ? DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: koru.degradadoHero,
+                            ),
+                            child: Icon(
+                              Icons.landscape_rounded,
+                              size: 48,
+                              color: koru.textoHero.withValues(alpha: 0.3),
+                            ),
+                          )
+                        : Image(
+                            image: _banner!.provider,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: koru.degradadoHero,
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              right: 10,
+              top: 10,
+              child: IconButton.filledTonal(
+                tooltip: _banner == null ? 'Añadir banner' : 'Cambiar banner',
+                onPressed: _isSaving
+                    ? null
+                    : () => _showImageOptions(banner: true),
+                icon: const Icon(Icons.photo_camera_rounded, size: 20),
+              ),
+            ),
+            Positioned(
+              left: 16,
+              bottom: 0,
+              child: GestureDetector(
+                onTap: _isSaving
+                    ? null
+                    : () => _showImageOptions(banner: false),
+                child: Stack(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface,
+                        shape: BoxShape.circle,
+                      ),
+                      child: KoruAvatar(
+                        image: _profilePhoto?.provider,
+                        name: name.replaceFirst('@', ''),
+                        radius: 44,
+                      ),
+                    ),
+                    Positioned(
+                      right: 2,
+                      bottom: 2,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: koru.hoja,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: theme.colorScheme.surface,
+                            width: 2,
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.photo_camera_rounded,
+                          size: 16,
+                          color: theme.colorScheme.onPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              left: 124,
+              right: 8,
+              bottom: 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 4),
+                  RoleBadge(_role),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Mi perfil'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
+      appBar: AppBar(title: const Text('Mi perfil')),
+      bottomNavigationBar: _isLoading || _loadError
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: FilledButton.icon(
+                  onPressed: _isSaving ? null : _saveProfile,
+                  icon: _isSaving
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        )
+                      : const Icon(Icons.check_rounded),
+                  label: Text(_isSaving ? 'Guardando...' : 'Guardar cambios'),
+                ),
+              ),
+            ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _loadError
@@ -300,7 +522,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     const SizedBox(height: 12),
                     FilledButton.icon(
                       onPressed: _retryProfileLoad,
-                      icon: const Icon(Icons.refresh),
+                      icon: const Icon(Icons.refresh_rounded),
                       label: const Text('Reintentar'),
                     ),
                   ],
@@ -308,7 +530,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             )
           : SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 640),
@@ -317,253 +539,151 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text('Mi perfil', style: theme.textTheme.headlineSmall),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Completa tus datos para personalizar tu experiencia.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Chip(
-                            avatar: const Icon(Icons.badge_outlined, size: 18),
-                            label: Text('Rol: ${DBService.roleLabel(_role)}'),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: AspectRatio(
-                            aspectRatio: 3,
-                            child: _banner == null
-                                ? Container(
-                                    color: theme.colorScheme.primaryContainer,
-                                    alignment: Alignment.center,
-                                    child: Icon(
-                                      Icons.image_outlined,
-                                      color:
-                                          theme.colorScheme.onPrimaryContainer,
-                                    ),
-                                  )
-                                : Image.memory(_banner!, fit: BoxFit.cover),
-                          ),
-                        ),
-                        Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: 8,
+                        _header(theme),
+                        _section(
+                          theme,
+                          title: 'Tu identidad',
+                          icon: Icons.badge_rounded,
                           children: [
-                            TextButton.icon(
-                              onPressed: _isSaving ? null : _pickBanner,
-                              icon: const Icon(Icons.panorama_outlined),
-                              label: Text(
-                                _banner == null
-                                    ? 'Añadir banner'
-                                    : 'Cambiar banner',
+                            TextFormField(
+                              controller: _usernameController,
+                              enabled:
+                                  !_isSaving && _canChangeHandle && !_isAdmin,
+                              maxLength: 20,
+                              validator: (value) =>
+                                  DBService.isValidUsername(value ?? '')
+                                  ? null
+                                  : 'Usa de 3 a 20 letras, números, puntos o guion bajo.',
+                              decoration: InputDecoration(
+                                labelText: 'Usuario',
+                                prefixText: '@',
+                                prefixIcon: const Icon(
+                                  Icons.alternate_email_rounded,
+                                ),
+                                helperText: _isAdmin
+                                    ? 'Usuario reservado para la cuenta administradora.'
+                                    : _canChangeHandle
+                                    ? 'Puedes cambiarlo una vez cada 60 días.'
+                                    : 'Podrás cambiarlo el ${_formatDate(_handleChangeAvailableAt)}.',
                               ),
                             ),
-                            if (_banner != null)
-                              IconButton(
-                                tooltip: 'Quitar banner',
-                                onPressed: _isSaving
-                                    ? null
-                                    : () {
-                                        setState(() => _banner = null);
-                                        _saveProfile();
-                                      },
-                                icon: const Icon(Icons.delete_outline),
-                              ),
+                            const SizedBox(height: 12),
+                            _textField(
+                              controller: _displayNameController,
+                              label: 'Nombre para mostrar',
+                              icon: Icons.person_outline_rounded,
+                              hint: _activeUsername,
+                              maxLength: 60,
+                            ),
                           ],
                         ),
                         const SizedBox(height: 12),
-                        Center(
-                          child: Column(
-                            children: [
-                              CircleAvatar(
-                                radius: 54,
-                                backgroundColor:
-                                    theme.colorScheme.primaryContainer,
-                                backgroundImage: _profilePhoto == null
-                                    ? null
-                                    : MemoryImage(_profilePhoto!),
-                                child: _profilePhoto == null
-                                    ? Icon(
-                                        Icons.person,
-                                        size: 52,
-                                        color: theme
-                                            .colorScheme
-                                            .onPrimaryContainer,
-                                      )
-                                    : null,
-                              ),
-                              const SizedBox(height: 10),
-                              Wrap(
-                                alignment: WrapAlignment.center,
-                                spacing: 8,
-                                children: [
-                                  TextButton.icon(
-                                    onPressed: _isSaving ? null : _pickPhoto,
-                                    icon: const Icon(
-                                      Icons.photo_library_outlined,
-                                    ),
-                                    label: Text(
-                                      _profilePhoto == null
-                                          ? 'Añadir foto'
-                                          : 'Cambiar foto',
-                                    ),
-                                  ),
-                                  if (_profilePhoto != null)
-                                    IconButton(
-                                      tooltip: 'Quitar foto',
-                                      onPressed: _isSaving
-                                          ? null
-                                          : () => setState(
-                                              () => _profilePhoto = null,
-                                            ),
-                                      icon: const Icon(Icons.delete_outline),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        TextFormField(
-                          controller: _usernameController,
-                          enabled: !_isSaving && _canChangeHandle && !_isAdmin,
-                          maxLength: 20,
-                          validator: (value) =>
-                              DBService.isValidUsername(value ?? '')
-                              ? null
-                              : 'Usa de 3 a 20 letras, números, puntos o guion bajo.',
-                          decoration: InputDecoration(
-                            labelText: 'Usuario único',
-                            prefixText: '@',
-                            prefixIcon: const Icon(Icons.alternate_email),
-                            helperText: _isAdmin
-                                ? 'Handle reservado para la cuenta administradora.'
-                                : _canChangeHandle
-                                ? 'Puedes cambiarlo una vez cada 60 días.'
-                                : 'Podrás cambiarlo el ${_formatDate(_handleChangeAvailableAt)}.',
-                            border: const OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        _textField(
-                          controller: _displayNameController,
-                          label: 'Nombre para mostrar',
-                          icon: Icons.badge_outlined,
-                          hint: _activeUsername,
-                          maxLength: 60,
-                        ),
-                        const SizedBox(height: 14),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        _section(
+                          theme,
+                          title: 'Sobre ti',
+                          icon: Icons.person_rounded,
                           children: [
-                            Expanded(
-                              child: _textField(
-                                controller: _ageController,
-                                label: 'Edad',
-                                icon: Icons.cake_outlined,
-                                keyboardType: TextInputType.number,
-                                validator: (value) {
-                                  if (value == null || value.trim().isEmpty)
-                                    return null;
-                                  final age = int.tryParse(value);
-                                  if (age == null || age < 1 || age > 120) {
-                                    return 'Edad no válida';
-                                  }
-                                  return null;
-                                },
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: _textField(
+                                    controller: _ageController,
+                                    label: 'Edad',
+                                    icon: Icons.cake_outlined,
+                                    keyboardType: TextInputType.number,
+                                    validator: (value) {
+                                      if (value == null ||
+                                          value.trim().isEmpty) {
+                                        return null;
+                                      }
+                                      final age = int.tryParse(value);
+                                      if (age == null || age < 1 || age > 120) {
+                                        return 'Edad no válida';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _textField(
+                                    controller: _birthYearController,
+                                    label: 'Año de nacimiento',
+                                    icon: Icons.calendar_today_outlined,
+                                    keyboardType: TextInputType.number,
+                                    validator: _validateYear,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            _textField(
+                              controller: _locationController,
+                              label: 'Ciudad o país',
+                              icon: Icons.location_on_outlined,
+                              maxLength: 80,
+                            ),
+                            const SizedBox(height: 12),
+                            _textField(
+                              controller: _occupationController,
+                              label: 'Ocupación o estudios',
+                              icon: Icons.work_outline_rounded,
+                              maxLength: 100,
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<String>(
+                              initialValue: _gender,
+                              decoration: const InputDecoration(
+                                labelText: 'Sexo',
+                                prefixIcon: Icon(Icons.wc_outlined),
                               ),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'male',
+                                  child: Text('Masculino'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'female',
+                                  child: Text('Femenino'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'non_binary',
+                                  child: Text('No binario'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'unspecified',
+                                  child: Text('Prefiero no especificar'),
+                                ),
+                              ],
+                              onChanged: (value) =>
+                                  setState(() => _gender = value),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _textField(
-                                controller: _birthYearController,
-                                label: 'Año de nacimiento',
-                                icon: Icons.calendar_today_outlined,
-                                keyboardType: TextInputType.number,
-                                validator: _validateYear,
-                              ),
-                            ),
+                            const SizedBox(height: 16),
                           ],
-                        ),
-                        const SizedBox(height: 14),
-                        _textField(
-                          controller: _locationController,
-                          label: 'Ciudad o país',
-                          icon: Icons.location_on_outlined,
-                          maxLength: 80,
-                        ),
-                        const SizedBox(height: 14),
-                        _textField(
-                          controller: _occupationController,
-                          label: 'Ocupación o estudios',
-                          icon: Icons.work_outline,
-                          maxLength: 100,
-                        ),
-                        const SizedBox(height: 14),
-                        DropdownButtonFormField<String>(
-                          initialValue: _gender,
-                          decoration: const InputDecoration(
-                            labelText: 'Sexo',
-                            prefixIcon: Icon(Icons.wc_outlined),
-                            border: OutlineInputBorder(),
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'male',
-                              child: Text('Masculino'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'female',
-                              child: Text('Femenino'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'non_binary',
-                              child: Text('No binario'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'unspecified',
-                              child: Text('Prefiero no especificar'),
-                            ),
-                          ],
-                          onChanged: (value) => setState(() => _gender = value),
-                        ),
-                        const SizedBox(height: 14),
-                        _textField(
-                          controller: _learningGoalController,
-                          label: 'Mi objetivo de aprendizaje',
-                          icon: Icons.flag_outlined,
-                          maxLength: 120,
-                        ),
-                        const SizedBox(height: 14),
-                        _textField(
-                          controller: _bioController,
-                          label: 'Sobre mí',
-                          icon: Icons.notes_outlined,
-                          hint: 'Cuéntanos un poco sobre ti',
-                          maxLines: 4,
-                          maxLength: 400,
                         ),
                         const SizedBox(height: 12),
-                        FilledButton.icon(
-                          onPressed: _isSaving ? null : _saveProfile,
-                          icon: _isSaving
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.save_outlined),
-                          label: Text(
-                            _isSaving ? 'Guardando...' : 'Guardar perfil',
-                          ),
+                        _section(
+                          theme,
+                          title: 'Tu aprendizaje',
+                          icon: Icons.eco_rounded,
+                          children: [
+                            _textField(
+                              controller: _learningGoalController,
+                              label: 'Mi objetivo de aprendizaje',
+                              icon: Icons.flag_outlined,
+                              maxLength: 120,
+                            ),
+                            const SizedBox(height: 12),
+                            _textField(
+                              controller: _bioController,
+                              label: 'Sobre mí',
+                              icon: Icons.notes_rounded,
+                              hint: 'Cuéntanos un poco sobre ti',
+                              maxLines: 4,
+                              maxLength: 400,
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -603,15 +723,17 @@ class _PhotoCropPageState extends State<_PhotoCropPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
+        // Recorte siempre en negro, en cualquier tema.
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
         title: Text(
-          widget.isBanner ? 'Elige la parte del banner' : 'Elige la parte de la foto',
+          widget.isBanner
+              ? 'Elige la parte del banner'
+              : 'Elige la parte de la foto',
         ),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
         actions: const [],
       ),
       body: SafeArea(
@@ -657,7 +779,9 @@ class _PhotoCropPageState extends State<_PhotoCropPage> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.check),
-                  label: Text(widget.isBanner ? 'Guardar banner' : 'Guardar foto'),
+                  label: Text(
+                    widget.isBanner ? 'Guardar banner' : 'Guardar foto',
+                  ),
                 ),
               ),
             ),

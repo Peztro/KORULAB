@@ -1,10 +1,17 @@
 import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'servicio_bd.dart';
+import 'modelos/imagen_perfil.dart';
+import 'servicios/koru_controlador.dart';
+import 'tema/preferencia_tema.dart';
+import 'widgets/ajuste_biometria.dart';
+import 'widgets/koru_mascota.dart';
+import 'widgets/mascota_guia.dart';
+import 'widgets/restablecer_contrasena.dart';
+import 'tema/tema_korulab.dart';
+import 'widgets/ui_koru.dart';
 import 'modelos/modelos_curso.dart';
 import 'cursos_docentes.dart' show decodeActivities;
 
@@ -42,113 +49,164 @@ class _SupportLoadingIndicator extends StatelessWidget {
   }
 }
 
-class SettingsPage extends StatefulWidget {
+class SettingsPage extends StatelessWidget {
   final String username;
-  final String displayName;
-  final VoidCallback onOpenProfile;
-  final VoidCallback onSwitchAccount;
 
-  const SettingsPage({
-    super.key,
-    required this.username,
-    required this.displayName,
-    required this.onOpenProfile,
-    required this.onSwitchAccount,
-  });
-
-  @override
-  State<SettingsPage> createState() => _SettingsPageState();
-}
-
-class _SettingsPageState extends State<SettingsPage> {
-  late final Future<String> _role = DBService.getUserRole(widget.username);
-
-  void _openRoleManagement() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => RoleManagementPage(adminUsername: widget.username),
-      ),
-    );
-  }
-
-  void _openStudents() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => StudentProfilesPage(requesterUsername: widget.username),
-      ),
-    );
-  }
+  const SettingsPage({super.key, required this.username});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Ajustes'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
+      appBar: AppBar(title: const Text('Ajustes')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 16),
+              child: _AppearanceSection(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const _KoruSection(),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                    child: Text(
+                      'Seguridad',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                  ),
+                  ListTile(
+                    leading: IconTile(
+                      icon: Icons.lock_reset_rounded,
+                      color: context.koru.agua,
+                      size: 40,
+                    ),
+                    title: const Text('Cambiar contraseña'),
+                    subtitle: const Text('Actualiza tu contraseña de ingreso.'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => showDialog<void>(
+                      context: context,
+                      builder: (_) => _ChangePasswordDialog(username: username),
+                    ),
+                  ),
+                  AjusteBiometria(username: username),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
-      body: FutureBuilder<String>(
-        future: _role,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const _SupportLoadingIndicator();
-          }
-          final isAdmin = snapshot.data == DBService.roleAdmin;
-          final canTeach = isAdmin || snapshot.data == DBService.roleTeacher;
-          return ListView(
+    );
+  }
+}
+
+/// Opciones de Koru: mostrarlo en Inicio y repetir su guía.
+class _KoruSection extends StatelessWidget {
+  const _KoruSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final koru = KoruControlador.instancia;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: ListenableBuilder(
+          listenable: koru,
+          builder: (context, _) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ListTile(
-                leading: const Icon(Icons.account_circle_outlined),
-                title: const Text('Mi perfil'),
-                subtitle: const Text('Edita tu información personal.'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: widget.onOpenProfile,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Text('Koru', style: theme.textTheme.titleMedium),
+              ),
+              SwitchListTile(
+                secondary: const KoruMascota(tamano: 40, animar: false),
+                title: const Text('Mostrar a Koru'),
+                subtitle: const Text('El caracol en la esquina de Inicio.'),
+                value: koru.activo,
+                onChanged: koru.cambiarActivo,
               ),
               ListTile(
-                leading: const Icon(Icons.switch_account_outlined),
-                title: const Text('Cambiar de cuenta'),
-                subtitle: const Text('Alterna entre tus cuentas guardadas.'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: widget.onSwitchAccount,
+                leading: IconTile(
+                  icon: Icons.menu_book_rounded,
+                  color: context.koru.hoja,
+                  size: 40,
+                ),
+                title: const Text('Ver la guía de Koru'),
+                subtitle: const Text('Repite la presentación de la app.'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => MascotaGuia.mostrar(context),
               ),
-              ListTile(
-                leading: const Icon(Icons.lock_reset),
-                title: const Text('Cambiar contraseña'),
-                subtitle: const Text('Restablece tu contraseña de ingreso.'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => showDialog<void>(
-                  context: context,
-                  builder: (_) =>
-                      _ChangePasswordDialog(username: widget.username),
-                ),
-              ),
-              if (isAdmin)
-                ListTile(
-                  leading: const Icon(Icons.manage_accounts_outlined),
-                  title: const Text('Administrar roles'),
-                  subtitle: const Text(
-                    'Asignar administradores, profesores y estudiantes.',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _openRoleManagement,
-                ),
-              if (canTeach)
-                ListTile(
-                  leading: const Icon(Icons.groups_outlined),
-                  title: const Text('Perfiles de estudiantes'),
-                  subtitle: const Text(
-                    'Consultar progreso, racha y precisión.',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _openStudents,
-                ),
             ],
-          );
-        },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Selector de tema: sigue al sistema, claro u oscuro. Se guarda en el
+/// dispositivo y se aplica al momento.
+class _AppearanceSection extends StatelessWidget {
+  const _AppearanceSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: PreferenciaTema.instancia,
+      builder: (context, mode, _) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Apariencia', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'Elige cómo quieres ver Korulab.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<ThemeMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: ThemeMode.system,
+                    icon: Icon(Icons.brightness_auto_rounded),
+                    label: Text('Sistema'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.light,
+                    icon: Icon(Icons.light_mode_rounded),
+                    label: Text('Claro'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.dark,
+                    icon: Icon(Icons.dark_mode_rounded),
+                    label: Text('Oscuro'),
+                  ),
+                ],
+                selected: {mode},
+                showSelectedIcon: false,
+                onSelectionChanged: (selection) =>
+                    PreferenciaTema.instancia.cambiar(selection.first),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -305,7 +363,7 @@ class _SupportRequestPageState extends State<SupportRequestPage> {
     final user = await DBService.getUser(widget.username);
     if (!mounted) return;
     setState(() {
-      _email = user?['email'] as String? ?? '';
+      _email = user?.email ?? '';
       _isLoading = false;
     });
   }
@@ -350,11 +408,7 @@ class _SupportRequestPageState extends State<SupportRequestPage> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Enviar PQRS'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
+      appBar: AppBar(title: const Text('Enviar PQRS')),
       body: _isLoading
           ? const _SupportLoadingIndicator()
           : Form(
@@ -362,64 +416,72 @@ class _SupportRequestPageState extends State<SupportRequestPage> {
               child: ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
-                  Text(
-                    '${widget.displayName} · @${widget.username}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Solicitud dirigida a @koruadm',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Respuesta de soporte a: $_email',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          IconTile(
+                            icon: Icons.support_agent_rounded,
+                            color: context.koru.agua,
+                            size: 48,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Para el equipo de soporte (@koruadm)',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'De ${widget.displayName} · @${widget.username}\n'
+                                  'Te responderemos a $_email',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
-                  DropdownButtonFormField<String>(
-                    initialValue: _category,
-                    decoration: const InputDecoration(
-                      labelText: 'Tipo de solicitud',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'Petición',
-                        child: Text('Petición'),
-                      ),
-                      DropdownMenuItem(value: 'Queja', child: Text('Queja')),
-                      DropdownMenuItem(
-                        value: 'Reclamo',
-                        child: Text('Reclamo'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Sugerencia',
-                        child: Text('Sugerencia'),
-                      ),
+                  Text('Tipo de solicitud', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final (value, icon) in const [
+                        ('Petición', Icons.help_outline_rounded),
+                        ('Queja', Icons.sentiment_dissatisfied_rounded),
+                        ('Reclamo', Icons.report_gmailerrorred_rounded),
+                        ('Sugerencia', Icons.lightbulb_outline_rounded),
+                      ])
+                        ChoiceChip(
+                          avatar: Icon(icon, size: 18),
+                          label: Text(value),
+                          selected: _category == value,
+                          showCheckmark: false,
+                          onSelected: _isSending
+                              ? null
+                              : (_) => setState(() => _category = value),
+                        ),
                     ],
-                    onChanged: _isSending
-                        ? null
-                        : (value) {
-                            if (value != null)
-                              setState(() => _category = value);
-                          },
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 20),
                   TextFormField(
                     controller: _subjectController,
                     enabled: !_isSending,
                     maxLength: 100,
-                    decoration: const InputDecoration(
-                      labelText: 'Asunto',
-                      border: OutlineInputBorder(),
-                    ),
+                    decoration: const InputDecoration(labelText: 'Asunto'),
                     validator: (value) => value == null || value.trim().isEmpty
                         ? 'Escribe un asunto.'
                         : null,
@@ -434,7 +496,6 @@ class _SupportRequestPageState extends State<SupportRequestPage> {
                     decoration: const InputDecoration(
                       labelText: 'Describe tu solicitud',
                       alignLabelWithHint: true,
-                      border: OutlineInputBorder(),
                     ),
                     validator: (value) =>
                         value == null || value.trim().length < 10
@@ -607,8 +668,6 @@ class _SupportReviewPageState extends State<SupportReviewPage> {
         backgroundColor: theme.colorScheme.surface,
         appBar: AppBar(
           title: const Text('Revisión de PQRS'),
-          backgroundColor: theme.colorScheme.primary,
-          foregroundColor: theme.colorScheme.onPrimary,
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Activas'),
@@ -672,7 +731,6 @@ class _SupportReviewPageState extends State<SupportReviewPage> {
         final status = request['status'] as String;
         return Card(
           margin: const EdgeInsets.only(bottom: 14),
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.65),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -719,10 +777,7 @@ class _SupportReviewPageState extends State<SupportReviewPage> {
                   DropdownButtonFormField<String>(
                     key: ValueKey('support-status-$id-$status'),
                     initialValue: status,
-                    decoration: const InputDecoration(
-                      labelText: 'Estado',
-                      border: OutlineInputBorder(),
-                    ),
+                    decoration: const InputDecoration(labelText: 'Estado'),
                     items: const [
                       DropdownMenuItem(
                         value: 'Pendiente',
@@ -781,7 +836,6 @@ class _ResolutionDialogState extends State<_ResolutionDialog> {
         maxLength: 1000,
         decoration: const InputDecoration(
           hintText: 'Escribe la respuesta que recibirá el usuario.',
-          border: OutlineInputBorder(),
         ),
         onChanged: (_) => setState(() {}),
       ),
@@ -801,10 +855,17 @@ class _ResolutionDialogState extends State<_ResolutionDialog> {
   }
 }
 
+/// Avisos: comunicados generales y respuestas de PQRS.
+/// Con [embedded] se muestra sin barra propia, como pestaña de Mensajes.
 class MessagesPage extends StatefulWidget {
   final String username;
+  final bool embedded;
 
-  const MessagesPage({super.key, required this.username});
+  const MessagesPage({
+    super.key,
+    required this.username,
+    this.embedded = false,
+  });
 
   @override
   State<MessagesPage> createState() => _MessagesPageState();
@@ -863,16 +924,140 @@ class _MessagesPageState extends State<MessagesPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final Widget content = _isLoading
+        ? const _SupportLoadingIndicator()
+        : _error != null
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_error!, textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: _loadMessages,
+                    child: const Text('Reintentar'),
+                  ),
+                ],
+              ),
+            ),
+          )
+        : _messages.isEmpty
+        ? Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconTile(
+                  icon: Icons.mark_email_read_rounded,
+                  color: context.koru.hoja,
+                  size: 64,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Todavía no tienes mensajes',
+                  style: theme.textTheme.titleMedium,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Aquí verás avisos y respuestas a tus PQRS.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          )
+        : ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: _messages.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            itemBuilder: (context, index) {
+              final item = _messages[index];
+              final kind = item['kind'] as String? ?? 'general';
+              final requestId = item['support_request_id'];
+              final createdAt = DateTime.tryParse(
+                item['created_at'] as String? ?? '',
+              );
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          IconTile(
+                            icon: kind == 'general'
+                                ? Icons.campaign_rounded
+                                : Icons.support_agent_rounded,
+                            color: kind == 'general'
+                                ? context.koru.oro
+                                : context.koru.agua,
+                            size: 40,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              item['title'] as String,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        item['message'] as String,
+                        style: theme.textTheme.bodyLarge,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        [
+                          '@${item['sender_username']}',
+                          if (requestId != null) 'PQRS #$requestId',
+                          if (createdAt != null)
+                            MaterialLocalizations.of(
+                              context,
+                            ).formatMediumDate(createdAt),
+                        ].join(' · '),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+    if (widget.embedded) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_canSend)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: FilledButton.tonalIcon(
+                onPressed: _composeBroadcast,
+                icon: const Icon(Icons.campaign_rounded),
+                label: const Text('Enviar aviso a todos'),
+              ),
+            ),
+          Expanded(
+            child: RefreshIndicator(onRefresh: _loadMessages, child: content),
+          ),
+        ],
+      );
+    }
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Mensajes'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
+        title: const Text('Avisos'),
         actions: [
           if (_canSend)
             IconButton(
-              tooltip: 'Enviar mensaje a todos',
+              tooltip: 'Enviar aviso a todos',
               onPressed: _composeBroadcast,
               icon: const Icon(Icons.campaign_outlined),
             ),
@@ -883,88 +1068,7 @@ class _MessagesPageState extends State<MessagesPage> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const _SupportLoadingIndicator()
-          : _error != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(_error!, textAlign: TextAlign.center),
-                    const SizedBox(height: 12),
-                    FilledButton(
-                      onPressed: _loadMessages,
-                      child: const Text('Reintentar'),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : _messages.isEmpty
-          ? const Center(child: Text('Todavía no tienes mensajes.'))
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final item = _messages[index];
-                final kind = item['kind'] as String? ?? 'general';
-                final requestId = item['support_request_id'];
-                final createdAt = DateTime.tryParse(
-                  item['created_at'] as String? ?? '',
-                );
-                return Card(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.65,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              kind == 'general'
-                                  ? Icons.campaign_outlined
-                                  : Icons.support_agent,
-                              color: theme.colorScheme.primaryContainer,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                item['title'] as String,
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(item['message'] as String),
-                        const SizedBox(height: 10),
-                        Text(
-                          [
-                            '@${item['sender_username']}',
-                            if (requestId != null) 'PQRS #$requestId',
-                            if (createdAt != null)
-                              MaterialLocalizations.of(
-                                context,
-                              ).formatMediumDate(createdAt),
-                          ].join(' · '),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
+      body: content,
     );
   }
 }
@@ -1015,34 +1119,79 @@ class _BroadcastMessagePageState extends State<BroadcastMessagePage> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _titleController.addListener(() => setState(() {}));
+    _messageController.addListener(() => setState(() {}));
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final koru = context.koru;
+    final titulo = _titleController.text.trim();
+    final mensaje = _messageController.text.trim();
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Mensaje para todos'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
+      appBar: AppBar(title: const Text('Publicar aviso')),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: FilledButton.icon(
+            onPressed: _isSending ? null : _send,
+            icon: _isSending
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                : const Icon(Icons.campaign_rounded),
+            label: Text(_isSending ? 'Publicando...' : 'Publicar para todos'),
+          ),
+        ),
       ),
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           children: [
-            const Text(
-              'Este comunicado aparecerá en la bandeja de mensajes de todos los usuarios.',
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    IconTile(
+                      icon: Icons.groups_rounded,
+                      color: koru.oro,
+                      size: 44,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        'Lo verán todos los usuarios: en Mensajes → Avisos, '
+                        'como tarjeta en su pantalla de inicio y con una '
+                        'notificación.',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _titleController,
               enabled: !_isSending,
               maxLength: 100,
+              textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
-                labelText: 'Asunto',
-                border: OutlineInputBorder(),
+                labelText: 'Título',
+                prefixIcon: Icon(Icons.title_rounded),
               ),
               validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Escribe un asunto.'
+                  ? 'Escribe un título.'
                   : null,
             ),
             const SizedBox(height: 12),
@@ -1052,27 +1201,59 @@ class _BroadcastMessagePageState extends State<BroadcastMessagePage> {
               minLines: 5,
               maxLines: 10,
               maxLength: 3000,
+              textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
                 labelText: 'Mensaje',
                 alignLabelWithHint: true,
-                border: OutlineInputBorder(),
               ),
               validator: (value) => value == null || value.trim().isEmpty
                   ? 'Escribe el mensaje.'
                   : null,
             ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _isSending ? null : _send,
-              icon: _isSending
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.send_outlined),
-              label: Text(_isSending ? 'Enviando...' : 'Enviar a todos'),
-            ),
+            if (titulo.isNotEmpty || mensaje.isNotEmpty) ...[
+              const SectionTitle('Vista previa'),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: koru.oro.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(KoruRadius.l),
+                  border: Border.all(color: koru.oro.withValues(alpha: 0.5)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.campaign_rounded, color: koru.oro, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'AVISO',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: koru.oro,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          Text(
+                            titulo.isEmpty ? 'Título del aviso' : titulo,
+                            style: theme.textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            mensaje.isEmpty ? 'Mensaje del aviso' : mensaje,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -1169,7 +1350,7 @@ class _RoleManagementPageState extends State<RoleManagementPage> {
         title: const Text('¿Eliminar cuenta de profesor?'),
         content: Text(
           'Se eliminará ${displayName?.isNotEmpty == true ? displayName : '@$username'} '
-          'junto con sus unidades, contenidos de Korucol y datos asociados. '
+          'junto con sus unidades, contenidos de Konsejos y datos asociados. '
           'Esta acción no se puede deshacer.',
         ),
         actions: [
@@ -1218,11 +1399,7 @@ class _RoleManagementPageState extends State<RoleManagementPage> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Cuentas y roles'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
+      appBar: AppBar(title: const Text('Cuentas y roles')),
       body: _isLoading
           ? const _SupportLoadingIndicator()
           : _error != null
@@ -1282,6 +1459,10 @@ class _RoleManagementPageState extends State<RoleManagementPage> {
                       role == DBService.roleTeacher &&
                       !isSystemAdmin &&
                       !isCurrentAdmin;
+                  final canResetPassword =
+                      role != DBService.roleAdmin &&
+                      !isSystemAdmin &&
+                      !isCurrentAdmin;
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(
@@ -1321,6 +1502,19 @@ class _RoleManagementPageState extends State<RoleManagementPage> {
                                 child: Text('Estudiante'),
                               ),
                             ],
+                          ),
+                        if (canResetPassword)
+                          IconButton(
+                            tooltip: 'Restablecer contraseña',
+                            onPressed: _deletingUsers.contains(username)
+                                ? null
+                                : () => restablecerContrasena(
+                                    context,
+                                    solicitante: widget.adminUsername,
+                                    username: username,
+                                    nombre: displayName,
+                                  ),
+                            icon: const Icon(Icons.lock_reset_rounded),
                           ),
                         if (canDeleteTeacher)
                           IconButton(
@@ -1438,8 +1632,6 @@ class _CreateTeacherLessonPageState extends State<CreateTeacherLessonPage> {
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
         title: Text(_isEditing ? 'Editar lección' : 'Crear lección'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
       ),
       body: Form(
         key: _formKey,
@@ -1457,7 +1649,7 @@ class _CreateTeacherLessonPageState extends State<CreateTeacherLessonPage> {
                 ),
                 ButtonSegment(
                   value: DBService.lessonDestinationKorucol,
-                  label: Text('Nota en Korucol'),
+                  label: Text('Nota en Konsejos'),
                   icon: Icon(Icons.sticky_note_2_outlined),
                 ),
               ],
@@ -1471,10 +1663,7 @@ class _CreateTeacherLessonPageState extends State<CreateTeacherLessonPage> {
               controller: _titleController,
               enabled: !_isSaving,
               maxLength: 80,
-              decoration: const InputDecoration(
-                labelText: 'Título',
-                border: OutlineInputBorder(),
-              ),
+              decoration: const InputDecoration(labelText: 'Título'),
               validator: (value) => value == null || value.trim().isEmpty
                   ? 'Escribe un título.'
                   : null,
@@ -1485,10 +1674,7 @@ class _CreateTeacherLessonPageState extends State<CreateTeacherLessonPage> {
               enabled: !_isSaving,
               maxLength: 180,
               maxLines: 2,
-              decoration: const InputDecoration(
-                labelText: 'Resumen',
-                border: OutlineInputBorder(),
-              ),
+              decoration: const InputDecoration(labelText: 'Resumen'),
               validator: (value) => value == null || value.trim().isEmpty
                   ? 'Escribe un resumen.'
                   : null,
@@ -1503,7 +1689,6 @@ class _CreateTeacherLessonPageState extends State<CreateTeacherLessonPage> {
               decoration: const InputDecoration(
                 labelText: 'Contenido de la lección',
                 alignLabelWithHint: true,
-                border: OutlineInputBorder(),
               ),
               validator: (value) => value == null || value.trim().length < 20
                   ? 'Escribe al menos 20 caracteres.'
@@ -1639,8 +1824,6 @@ class _StudentProfilesPageState extends State<StudentProfilesPage> {
               ? 'Gestión de perfiles de estudiantes'
               : 'Perfiles de estudiantes',
         ),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
         actions: [
           IconButton(
             tooltip: 'Actualizar',
@@ -1662,27 +1845,59 @@ class _StudentProfilesPageState extends State<StudentProfilesPage> {
                 final student = _students[index];
                 final name = (student['display_name'] as String?)?.trim();
                 final username = student['username'] as String;
-                final photo = student['profile_photo'] as Uint8List?;
+                final photo = student['profile_photo'] as ImagenPerfil?;
                 return Card(
                   margin: const EdgeInsets.only(bottom: 10),
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.55,
-                  ),
                   child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: theme.colorScheme.primaryContainer,
-                      backgroundImage: photo == null
-                          ? null
-                          : MemoryImage(photo),
-                      child: photo == null
-                          ? const Icon(Icons.person_outline)
-                          : null,
+                    contentPadding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+                    leading: KoruAvatar(
+                      image: photo?.provider,
+                      name: name == null || name.isEmpty ? username : name,
+                      radius: 22,
                     ),
                     title: Text(
                       name == null || name.isEmpty ? '@$username' : name,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                    subtitle: Text(
-                      '${student['completed_lessons']} lecciones · Racha ${student['daily_streak']} · Precisión ${student['accuracy_percent']}%',
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Wrap(
+                        spacing: 10,
+                        children: [
+                          for (final (icon, color, text) in [
+                            (
+                              Icons.school_rounded,
+                              context.koru.hoja,
+                              '${student['completed_lessons']}',
+                            ),
+                            (
+                              Icons.local_fire_department_rounded,
+                              context.koru.fuego,
+                              '${student['daily_streak']}',
+                            ),
+                            (
+                              Icons.track_changes_rounded,
+                              context.koru.agua,
+                              '${student['accuracy_percent']}%',
+                            ),
+                          ])
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(icon, size: 16, color: color),
+                                const SizedBox(width: 3),
+                                Text(
+                                  text,
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1767,57 +1982,12 @@ class _StudentProfileDetailsPageState extends State<StudentProfileDetailsPage> {
     return [for (final id in ids) teacherTitles[id] ?? describeActivityId(id)];
   }
 
-  Future<void> _resetPassword() async {
-    final username = widget.student['username'] as String;
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Restablecer contraseña'),
-        content: Text(
-          'Se generará una contraseña temporal para @$username y la '
-          'contraseña actual dejará de funcionar.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Restablecer'),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true || !mounted) return;
-    try {
-      final temp = await DBService.resetStudentPassword(
-        widget.requesterUsername,
-        username,
-      );
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Contraseña temporal'),
-          content: SelectableText(
-            'Entrega esta contraseña a @$username:\n\n$temp',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cerrar'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('No se pudo restablecer: $e')));
-    }
-  }
+  Future<void> _resetPassword() => restablecerContrasena(
+    context,
+    solicitante: widget.requesterUsername,
+    username: widget.student['username'] as String,
+    nombre: widget.student['display_name'] as String?,
+  );
 
   Widget _section(ThemeData theme, String title) => Padding(
     padding: const EdgeInsets.only(top: 8, bottom: 8),
@@ -1831,25 +2001,22 @@ class _StudentProfileDetailsPageState extends State<StudentProfileDetailsPage> {
   Widget build(BuildContext context) {
     final student = widget.student;
     final theme = Theme.of(context);
-    final photo = student['profile_photo'] as Uint8List?;
+    final photo = student['profile_photo'] as ImagenPerfil?;
     final displayName = (student['display_name'] as String?)?.trim();
     final username = student['username'] as String;
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Perfil del estudiante'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
+      appBar: AppBar(title: const Text('Perfil del estudiante')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
           Center(
-            child: CircleAvatar(
+            child: KoruAvatar(
+              image: photo?.provider,
+              name: displayName == null || displayName.isEmpty
+                  ? username
+                  : displayName,
               radius: 48,
-              backgroundColor: theme.colorScheme.primaryContainer,
-              backgroundImage: photo == null ? null : MemoryImage(photo),
-              child: photo == null ? const Icon(Icons.person, size: 44) : null,
             ),
           ),
           const SizedBox(height: 12),

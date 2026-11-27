@@ -3,7 +3,8 @@ import 'package:local_auth/local_auth.dart';
 import '../servicio_bd.dart';
 import '../paginas/pagina_inicio.dart';
 import '../pagina_registro.dart';
-import '../widgets/animated_widgets.dart';
+import 'pagina_recuperar_contrasena.dart';
+import '../widgets/auth_layout.dart';
 import '../servicios/servicio_biometrico.dart';
 import '../widgets/biometric_login_widget.dart';
 
@@ -21,7 +22,8 @@ class LoginPage extends StatefulWidget {
 }
 
 // Estado de la página de login - gestiona la lógica de validación y autenticación
-class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMixin {
+class _LoginPageState extends State<LoginPage>
+    with SingleTickerProviderStateMixin {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
@@ -47,23 +49,39 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
 
   Future<void> _initBiometrics() async {
     final available = await BiometricAuthService.isBiometricAvailable();
-    final hasBiometricUser = await BiometricAuthService.hasBiometricUser();
     final biometrics = await BiometricAuthService.getAvailableBiometrics();
-    final username = await BiometricAuthService.getBiometricUsername();
-    
+
     String biometricType = '';
     if (biometrics.isNotEmpty) {
-      biometricType = BiometricAuthService.getBiometricName(biometrics.first);
+      biometricType = BiometricAuthService.nombreAmigable(biometrics);
     }
 
     setState(() {
       _biometricAvailable = available;
-      _hasBiometricUser = hasBiometricUser && available;
       _availableBiometrics = biometrics;
       _biometricType = biometricType;
-      _biometricUsername = username ?? '';
-      _showBiometric = _hasBiometricUser;
+      _showBiometric = false; // Por defecto no mostrar biometría
     });
+
+    // Buscar última cuenta usada para auto-completar campos
+    await _autoLoadLastAccount();
+  }
+
+  Future<void> _autoLoadLastAccount() async {
+    final lastUsed = await DBService.getLastUsedAccount();
+    if (lastUsed != null && mounted) {
+      final username = lastUsed['username'] ?? '';
+      final biometricEnabledForUser =
+          await BiometricAuthService.isBiometricEnabled(username);
+
+      setState(() {
+        _usernameController.text = username;
+        _biometricUsername = username;
+        _hasBiometricUser = biometricEnabledForUser && _biometricAvailable;
+        _showBiometric =
+            _hasBiometricUser; // Mostrar si está habilitada PARA ESTE USUARIO
+      });
+    }
   }
 
   Future<void> _login() async {
@@ -79,19 +97,24 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
 
     try {
       // Validar credenciales en la base de datos
-      final isValid = await DBService.validateLogin(username: username, password: password);
+      final isValid = await DBService.validateLogin(
+        username: username,
+        password: password,
+      );
 
       if (isValid) {
         // Guardar sesión
         await DBService.saveSession(username);
-        
+
         // Preguntar si desea habilitar login biométrico
         if (mounted && _biometricAvailable && !_hasBiometricUser) {
           _showBiometricSetupDialog(username);
         }
 
         if (mounted) {
-          final route = MaterialPageRoute(builder: (_) => HomePage(username: username));
+          final route = MaterialPageRoute(
+            builder: (_) => HomePage(username: username),
+          );
           if (widget.addAccount) {
             Navigator.of(context).pushAndRemoveUntil(route, (_) => false);
           } else {
@@ -110,29 +133,39 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
     }
   }
 
+  /// Tras verificar la huella, entra con la sesión guardada de esa cuenta.
+  /// Si no hay sesión guardada (por ejemplo, tras cerrar sesión), hace falta
+  /// la contraseña una vez.
   Future<void> _loginWithBiometric() async {
     setState(() => _isLoading = true);
-
     try {
-      final authenticated = await BiometricAuthService.authenticate(
-        reason: 'Autentica con tu $_biometricType para acceder a Korulab',
+      final handle = DBService.normalizeUsername(_biometricUsername);
+      final accounts = await DBService.getSavedAccounts();
+      final account = accounts
+          .where((a) => DBService.normalizeUsername(a.username) == handle)
+          .firstOrNull;
+      if (account == null) {
+        _showSnackBar('Para usar la huella, entra una vez con tu contraseña.');
+        _switchToPasswordLogin();
+        return;
+      }
+      final username = await DBService.switchAccount(account.id);
+      if (!mounted) return;
+      final route = MaterialPageRoute(
+        builder: (_) => HomePage(username: username),
       );
-
-      if (authenticated) {
-        final username = await BiometricAuthService.getBiometricUsername();
-        if (username != null && mounted) {
-          final route = MaterialPageRoute(builder: (_) => HomePage(username: username));
-          Navigator.of(context).pushReplacement(route);
-        }
+      if (widget.addAccount) {
+        Navigator.of(context).pushAndRemoveUntil(route, (_) => false);
       } else {
-        _showSnackBar('Autenticación biométrica cancelada');
+        Navigator.of(context).pushReplacement(route);
       }
     } catch (e) {
-      _showSnackBar('Error en autenticación biométrica: $e');
+      _showSnackBar(
+        e is StateError ? e.message : 'No se pudo entrar con la huella.',
+      );
+      _switchToPasswordLogin();
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -156,7 +189,10 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                 reason: 'Verifica tu identidad para habilitar login biométrico',
               );
               if (authenticated) {
-                await BiometricAuthService.saveBiometricPreference(true);
+                await BiometricAuthService.saveBiometricPreference(
+                  true,
+                  username,
+                );
                 await BiometricAuthService.saveBiometricUser(username);
                 _initBiometrics();
                 if (mounted) {
@@ -180,11 +216,15 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   }
 
   void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _goToRegister() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterPage()));
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const RegisterPage()));
   }
 
   @override
@@ -198,225 +238,138 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final fadeAnimation = Tween<double>(
-      begin: 0,
-      end: 1,
-    ).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeIn));
-    final slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.2),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOutCubic));
+    final fade = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOut,
+    );
+    final useBiometric = _showBiometric && _hasBiometricUser;
 
-    return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: widget.addAccount
-          ? AppBar(
-              backgroundColor: theme.colorScheme.surface,
-              title: const Text('Agregar otra cuenta'),
-            )
-          : null,
-      body: Center(
-        child: FadeTransition(
-          opacity: fadeAnimation,
-          child: SlideTransition(
-            position: slideAnimation,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+    return FadeTransition(
+      opacity: fade,
+      child: AuthLayout(
+        showBack: widget.addAccount,
+        title: widget.addAccount ? 'Agregar otra cuenta' : 'Hola de nuevo',
+        subtitle: useBiometric
+            ? 'Usa tu $_biometricType para entrar.'
+            : 'Inicia sesión para seguir aprendiendo.',
+        child: useBiometric
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Logo con animación
-                  ScaleTransition(
-                    scale: Tween<double>(begin: 0.8, end: 1.0).animate(
-                      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
-                    ),
-                    child: Image.asset(
-                      'assets/images/koruicon.png',
-                      height: 100,
-                      fit: BoxFit.contain,
-                    ),
+                  BiometricLoginWidget(
+                    username: _biometricUsername,
+                    onAuthSuccess: _loginWithBiometric,
+                    onAuthFail: () => _showSnackBar('Autenticación fallida'),
                   ),
-                  const SizedBox(height: 24),
-                  // Título
-                  Text(
-                    'Bienvenido a Korulab',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                    textAlign: TextAlign.center,
+                  const SizedBox(height: 16),
+                  TextButton.icon(
+                    onPressed: _switchToPasswordLogin,
+                    icon: const Icon(Icons.password_rounded),
+                    label: const Text('Usar contraseña'),
                   ),
-                  const SizedBox(height: 8),
-                  // Subtítulo
-                  Text(
-                    _showBiometric && _hasBiometricUser
-                        ? 'Usa tu $_biometricType para entrar'
-                        : 'Inicia sesión para continuar',
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 40),
-                  
-                  // Mostrar biometría o contraseña según estado
-                  if (_showBiometric && _hasBiometricUser) ...[
-                    BiometricLoginWidget(
-                      username: _biometricUsername,
-                      onAuthSuccess: _loginWithBiometric,
-                      onAuthFail: () => _showSnackBar('Autenticación fallida'),
-                    ),
-                    const SizedBox(height: 24),
-                    TextButton.icon(
-                      onPressed: _switchToPasswordLogin,
-                      icon: const Icon(Icons.lock),
-                      label: const Text('Usar contraseña en su lugar'),
-                    ),
-                  ] else ...[
-                    // Campo de usuario con animación retrasada
-                    FadeTransition(
-                      opacity: Tween<double>(begin: 0, end: 1).animate(
-                        CurvedAnimation(
-                          parent: _animationController,
-                          curve: const Interval(0.2, 0.8),
-                        ),
+                ],
+              )
+            : AutofillGroup(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      controller: _usernameController,
+                      enabled: !_isLoading,
+                      autofillHints: const [AutofillHints.username],
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: 'Usuario',
+                        hintText: 'tu_usuario',
+                        prefixText: '@',
+                        prefixIcon: Icon(Icons.person_outline_rounded),
                       ),
-                      child: SlideTransition(
-                        position: Tween<Offset>(begin: const Offset(-0.1, 0), end: Offset.zero)
-                            .animate(
-                              CurvedAnimation(
-                                parent: _animationController,
-                                curve: const Interval(0.2, 0.8),
-                              ),
-                            ),
-                        child: TextField(
-                          controller: _usernameController,
-                          enabled: !_isLoading,
-                          decoration: InputDecoration(
-                            labelText: 'Usuario único',
-                            hintText: 'tu_usuario',
-                            prefixText: '@',
-                            prefixIcon: const Icon(Icons.person),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            filled: true,
-                            fillColor: theme.colorScheme.surfaceContainerHighest.withValues(
-                              alpha: 0.5,
-                            ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: _passwordController,
+                      enabled: !_isLoading,
+                      obscureText: _obscurePassword,
+                      autofillHints: const [AutofillHints.password],
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _isLoading ? null : _login(),
+                      decoration: InputDecoration(
+                        labelText: 'Contraseña',
+                        prefixIcon: const Icon(Icons.lock_outline_rounded),
+                        suffixIcon: IconButton(
+                          tooltip: _obscurePassword
+                              ? 'Mostrar contraseña'
+                              : 'Ocultar contraseña',
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                          ),
+                          onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    // Campo de contraseña con animación retrasada
-                    FadeTransition(
-                      opacity: Tween<double>(begin: 0, end: 1).animate(
-                        CurvedAnimation(
-                          parent: _animationController,
-                          curve: const Interval(0.3, 0.9),
-                        ),
-                      ),
-                      child: SlideTransition(
-                        position: Tween<Offset>(begin: const Offset(-0.1, 0), end: Offset.zero)
-                            .animate(
-                              CurvedAnimation(
-                                parent: _animationController,
-                                curve: const Interval(0.3, 0.9),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _isLoading
+                            ? null
+                            : () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => RecuperarContrasenaPage(
+                                    usuarioInicial: _usernameController.text,
+                                  ),
+                                ),
                               ),
-                            ),
-                        child: TextField(
-                          controller: _passwordController,
-                          enabled: !_isLoading,
-                          obscureText: _obscurePassword,
-                          decoration: InputDecoration(
-                            hintText: 'Contraseña',
-                            prefixIcon: const Icon(Icons.lock),
-                            suffixIcon: IconButton(
-                              icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
-                              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                            ),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            filled: true,
-                            fillColor: theme.colorScheme.surfaceContainerHighest.withValues(
-                              alpha: 0.5,
-                            ),
-                          ),
-                        ),
+                        child: const Text('¿Olvidaste tu contraseña?'),
                       ),
                     ),
-                    const SizedBox(height: 32),
-                    // Botón de login animado
-                    FadeTransition(
-                      opacity: Tween<double>(begin: 0, end: 1).animate(
-                        CurvedAnimation(
-                          parent: _animationController,
-                          curve: const Interval(0.4, 1.0),
-                        ),
-                      ),
-                      child: AnimatedElevatedButton(
-                        label: _isLoading ? 'Iniciando sesión...' : 'Iniciar sesión',
-                        onPressed: _isLoading ? () {} : _login,
-                        backgroundColor: theme.colorScheme.primary,
-                        foregroundColor: theme.colorScheme.onPrimary,
-                      ),
+                    const SizedBox(height: 8),
+                    LoadingButton(
+                      label: 'Iniciar sesión',
+                      icon: Icons.arrow_forward_rounded,
+                      loading: _isLoading,
+                      onPressed: _login,
                     ),
-                    
-                    // Botón biométrico si está disponible
                     if (_biometricAvailable && !_hasBiometricUser) ...[
-                      const SizedBox(height: 16),
-                      Divider(color: theme.colorScheme.outlineVariant),
-                      const SizedBox(height: 16),
-                      ElevatedButton.icon(
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          const Expanded(child: Divider()),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              'o',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          const Expanded(child: Divider()),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      OutlinedButton.icon(
                         onPressed: _isLoading ? null : _switchToBiometricLogin,
                         icon: Icon(
                           _availableBiometrics.contains(BiometricType.face)
-                              ? Icons.face
-                              : Icons.fingerprint,
+                              ? Icons.face_rounded
+                              : Icons.fingerprint_rounded,
                         ),
-                        label: Text('O usa $_biometricType'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.colorScheme.primaryContainer,
-                          foregroundColor: theme.colorScheme.onPrimaryContainer,
-                        ),
+                        label: Text('Entrar con $_biometricType'),
                       ),
                     ],
-                    
                     const SizedBox(height: 16),
-                    // Enlace de registro
-                    FadeTransition(
-                      opacity: Tween<double>(begin: 0, end: 1).animate(
-                        CurvedAnimation(
-                          parent: _animationController,
-                          curve: const Interval(0.5, 1.0),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            '¿No tienes cuenta? ',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: _isLoading ? null : _goToRegister,
-                            child: Text(
-                              'Regístrate',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                    AuthSwitchLink(
+                      question: '¿No tienes cuenta?',
+                      action: 'Regístrate',
+                      onTap: _isLoading ? null : _goToRegister,
                     ),
                   ],
-                ],
+                ),
               ),
-            ),
-          ),
-        ),
       ),
     );
   }

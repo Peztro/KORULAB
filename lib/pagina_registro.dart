@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'widgets/auth_layout.dart';
 import 'servicio_bd.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -95,9 +96,9 @@ class _RegisterPageState extends State<RegisterPage> {
 
   void _showSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -111,156 +112,101 @@ class _RegisterPageState extends State<RegisterPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        backgroundColor: theme.colorScheme.surface,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: theme.colorScheme.onSurface),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Crear Cuenta',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Únete a Korulab',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 40),
-              TextField(
-                controller: _usernameController,
-                enabled: !_isLoading,
-                decoration: InputDecoration(
-                  labelText: 'Usuario único',
-                  hintText: 'ej. eco_explorador',
-                  prefixText: '@',
-                  prefixIcon: const Icon(Icons.person),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: theme.colorScheme.surfaceContainerHighest
-                      .withValues(alpha: 0.5),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _emailController,
-                enabled: !_isLoading,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  hintText: 'Email',
-                  prefixIcon: const Icon(Icons.email),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: theme.colorScheme.surfaceContainerHighest
-                      .withValues(alpha: 0.5),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _passwordController,
-                enabled: !_isLoading,
-                obscureText: _obscurePassword,
-                decoration: InputDecoration(
-                  hintText: 'Contraseña',
-                  prefixIcon: const Icon(Icons.lock),
-                  suffixIcon: IconButton(
-                    icon: Icon(_obscurePassword
-                        ? Icons.visibility_off
-                        : Icons.visibility),
-                    onPressed: () => setState(
-                        () => _obscurePassword = !_obscurePassword),
-                  ),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: theme.colorScheme.surfaceContainerHighest
-                      .withValues(alpha: 0.5),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _confirmPasswordController,
-                enabled: !_isLoading,
-                obscureText: _obscureConfirmPassword,
-                decoration: InputDecoration(
-                  hintText: 'Confirmar contraseña',
-                  prefixIcon: const Icon(Icons.lock),
-                  suffixIcon: IconButton(
-                    icon: Icon(_obscureConfirmPassword
-                        ? Icons.visibility_off
-                        : Icons.visibility),
-                    onPressed: () => setState(
-                        () => _obscureConfirmPassword = !_obscureConfirmPassword),
-                  ),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: theme.colorScheme.surfaceContainerHighest
-                      .withValues(alpha: 0.5),
-                ),
-              ),
-              const SizedBox(height: 32),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
-                  foregroundColor: theme.colorScheme.onPrimary,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: _isLoading ? null : _register,
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : const Text('Registrarse',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('¿Ya tienes cuenta? ',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant)),
-                  GestureDetector(
-                    onTap: !_isLoading
-                        ? () => Navigator.of(context).pop()
-                        : null,
-                    child: Text('Inicia sesión',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-            ],
+    InputDecoration passwordDecoration(
+      String label,
+      bool obscured,
+      VoidCallback toggle,
+    ) {
+      return InputDecoration(
+        labelText: label,
+        prefixIcon: const Icon(Icons.lock_outline_rounded),
+        suffixIcon: IconButton(
+          tooltip: obscured ? 'Mostrar contraseña' : 'Ocultar contraseña',
+          icon: Icon(
+            obscured
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
           ),
+          onPressed: toggle,
+        ),
+      );
+    }
+
+    return AuthLayout(
+      showBack: true,
+      title: 'Crea tu cuenta',
+      subtitle: 'Únete a Korulab y empieza tu racha verde.',
+      child: AutofillGroup(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _usernameController,
+              enabled: !_isLoading,
+              autofillHints: const [AutofillHints.newUsername],
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Usuario',
+                hintText: 'eco_explorador',
+                helperText: '3 a 20 letras, números, punto o guion bajo.',
+                prefixText: '@',
+                prefixIcon: Icon(Icons.person_outline_rounded),
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _emailController,
+              enabled: !_isLoading,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Correo',
+                prefixIcon: Icon(Icons.mail_outline_rounded),
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _passwordController,
+              enabled: !_isLoading,
+              obscureText: _obscurePassword,
+              autofillHints: const [AutofillHints.newPassword],
+              textInputAction: TextInputAction.next,
+              decoration: passwordDecoration(
+                'Contraseña',
+                _obscurePassword,
+                () => setState(() => _obscurePassword = !_obscurePassword),
+              ).copyWith(helperText: 'Mínimo 6 caracteres.'),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _confirmPasswordController,
+              enabled: !_isLoading,
+              obscureText: _obscureConfirmPassword,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _isLoading ? null : _register(),
+              decoration: passwordDecoration(
+                'Confirmar contraseña',
+                _obscureConfirmPassword,
+                () => setState(
+                  () => _obscureConfirmPassword = !_obscureConfirmPassword,
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            LoadingButton(
+              label: 'Crear cuenta',
+              icon: Icons.arrow_forward_rounded,
+              loading: _isLoading,
+              onPressed: _register,
+            ),
+            const SizedBox(height: 12),
+            AuthSwitchLink(
+              question: '¿Ya tienes cuenta?',
+              action: 'Inicia sesión',
+              onTap: _isLoading ? null : () => Navigator.of(context).pop(),
+            ),
+          ],
         ),
       ),
     );

@@ -1,14 +1,17 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 
+import 'modelos/imagen_perfil.dart';
+import 'modelos/perfil.dart';
+import 'paginas/pagina_mensajes.dart';
 import 'servicio_bd.dart';
+import 'tema/tema_korulab.dart';
+import 'widgets/ui_koru.dart';
 
 /// Perfil público estilo red social, visible desde Korublog para cualquier rol.
 class PublicProfilePage extends StatefulWidget {
   final String username;
   final String? fallbackName;
-  final Uint8List? fallbackPhoto;
+  final ImagenPerfil? fallbackPhoto;
 
   const PublicProfilePage({
     super.key,
@@ -22,12 +25,10 @@ class PublicProfilePage extends StatefulWidget {
 }
 
 class _PublicProfilePageState extends State<PublicProfilePage> {
-  late final Future<
-    (Map<String, dynamic>?, Map<String, List<Map<String, dynamic>>>)
-  >
+  late final Future<(PerfilPublico?, Map<String, List<Map<String, dynamic>>>)>
   _data = _load();
 
-  Future<(Map<String, dynamic>?, Map<String, List<Map<String, dynamic>>>)>
+  Future<(PerfilPublico?, Map<String, List<Map<String, dynamic>>>)>
   _load() async {
     final profile = await DBService.getPublicProfile(widget.username);
     final activity = profile == null
@@ -90,37 +91,30 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 
   Widget _content(
     ThemeData theme,
-    Map<String, dynamic> profile,
+    PerfilPublico profile,
     Map<String, List<Map<String, dynamic>>> activity,
   ) {
-    final username = profile['username'] as String;
-    final name = (profile['display_name'] as String?)?.trim() ?? '';
-    final photo = profile['profile_photo'] as Uint8List?;
-    final banner = profile['banner'] as Uint8List?;
-    final role = profile['role'] as String?;
+    final username = profile.username;
+    final name = profile.displayName.trim();
+    final photo = profile.foto;
+    final banner = profile.banner;
+    final role = profile.role;
+    final joined = _date(profile.createdAt?.toIso8601String());
     final posts = activity['posts'] ?? const [];
     final replies = activity['replies'] ?? const [];
     final details = <(IconData, String)>[
-      if ((profile['occupation'] as String? ?? '').isNotEmpty)
-        (Icons.school_outlined, profile['occupation'] as String),
-      if ((profile['location'] as String? ?? '').isNotEmpty)
-        (Icons.place_outlined, profile['location'] as String),
-      if (_date(profile['created_at']).isNotEmpty)
-        (
-          Icons.calendar_month_outlined,
-          'Se unió el ${_date(profile['created_at'])}',
-        ),
+      if (profile.occupation.isNotEmpty)
+        (Icons.school_outlined, profile.occupation),
+      if (profile.location.isNotEmpty) (Icons.place_outlined, profile.location),
+      if (joined.isNotEmpty)
+        (Icons.calendar_month_outlined, 'Se unió el $joined'),
     ];
 
     return DefaultTabController(
       length: 2,
       child: NestedScrollView(
         headerSliverBuilder: (context, _) => [
-          SliverAppBar(
-            pinned: true,
-            backgroundColor: theme.colorScheme.primary,
-            foregroundColor: theme.colorScheme.onPrimary,
-          ),
+          const SliverAppBar(pinned: true),
           SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,28 +123,24 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                   clipBehavior: Clip.none,
                   children: [
                     Container(
-                      height: 90,
+                      height: 130,
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      clipBehavior: Clip.antiAlias,
                       decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(KoruRadius.xl),
                         image: banner == null
                             ? null
                             : DecorationImage(
-                                image: MemoryImage(banner),
+                                image: banner.provider,
                                 fit: BoxFit.cover,
                               ),
                         gradient: banner != null
                             ? null
-                            : LinearGradient(
-                                colors: [
-                                  theme.colorScheme.primary,
-                                  theme.colorScheme.tertiary,
-                                ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
+                            : context.koru.degradadoHero,
                       ),
                     ),
                     Positioned(
-                      left: 20,
+                      left: 32,
                       bottom: -48,
                       child: Container(
                         padding: const EdgeInsets.all(4),
@@ -158,19 +148,10 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                           color: theme.colorScheme.surface,
                           shape: BoxShape.circle,
                         ),
-                        child: CircleAvatar(
+                        child: KoruAvatar(
+                          image: photo?.provider,
+                          name: name.isEmpty ? username : name,
                           radius: 48,
-                          backgroundColor: theme.colorScheme.primaryContainer,
-                          backgroundImage: photo == null
-                              ? null
-                              : MemoryImage(photo),
-                          child: photo == null
-                              ? Icon(
-                                  Icons.person,
-                                  size: 48,
-                                  color: theme.colorScheme.onPrimaryContainer,
-                                )
-                              : null,
                         ),
                       ),
                     ),
@@ -203,23 +184,18 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                                     color: theme.colorScheme.onSurfaceVariant,
                                   ),
                                 ),
-                                Chip(
-                                  visualDensity: VisualDensity.compact,
-                                  label: Text(DBService.roleLabel(role)),
-                                  padding: EdgeInsets.zero,
-                                ),
+                                RoleBadge(role),
                               ],
                             ),
-                            if ((profile['bio'] as String? ?? '')
-                                .isNotEmpty) ...[
+                            AccionesSociales(username: username),
+                            if (profile.bio.isNotEmpty) ...[
                               const SizedBox(height: 12),
                               Text(
-                                profile['bio'] as String,
+                                profile.bio,
                                 style: theme.textTheme.bodyLarge,
                               ),
                             ],
-                            if ((profile['learning_goal'] as String? ?? '')
-                                .isNotEmpty) ...[
+                            if (profile.learningGoal.isNotEmpty) ...[
                               const SizedBox(height: 10),
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,12 +203,12 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                                   Icon(
                                     Icons.flag_outlined,
                                     size: 18,
-                                    color: theme.colorScheme.primary,
+                                    color: context.koru.hoja,
                                   ),
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
-                                      profile['learning_goal'] as String,
+                                      profile.learningGoal,
                                       style: theme.textTheme.bodyMedium,
                                     ),
                                   ),
@@ -274,29 +250,44 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                               ),
                             ],
                             const SizedBox(height: 16),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: [
-                                _Stat(
-                                  value: '${profile['posts_count'] ?? 0}',
-                                  label: 'Publicaciones',
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
                                 ),
-                                _Stat(
-                                  value: '${profile['replies_count'] ?? 0}',
-                                  label: 'Respuestas',
+                                child: Row(
+                                  children: [
+                                    _Stat(
+                                      value: '${profile.publicaciones}',
+                                      label: 'Publicaciones',
+                                      icon: Icons.forum_rounded,
+                                      color: context.koru.agua,
+                                    ),
+                                    _Stat(
+                                      value: '${profile.respuestas}',
+                                      label: 'Respuestas',
+                                      icon: Icons.chat_bubble_rounded,
+                                      color: context.koru.tierra,
+                                    ),
+                                    if (role == DBService.roleStudent) ...[
+                                      _Stat(
+                                        value:
+                                            '${profile.leccionesCompletadas}',
+                                        label: 'Lecciones',
+                                        icon: Icons.school_rounded,
+                                        color: context.koru.hoja,
+                                      ),
+                                      _Stat(
+                                        value: '${profile.rachaDiaria}',
+                                        label: 'Racha',
+                                        icon:
+                                            Icons.local_fire_department_rounded,
+                                        color: context.koru.fuego,
+                                      ),
+                                    ],
+                                  ],
                                 ),
-                                if (role == DBService.roleStudent) ...[
-                                  _Stat(
-                                    value:
-                                        '${profile['completed_lessons'] ?? 0}',
-                                    label: 'Unidades',
-                                  ),
-                                  _Stat(
-                                    value: '${profile['daily_streak'] ?? 0}',
-                                    label: 'Racha',
-                                  ),
-                                ],
-                              ],
+                              ),
                             ),
                           ],
                         ),
@@ -353,23 +344,33 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 class _Stat extends StatelessWidget {
   final String value;
   final String label;
+  final IconData icon;
+  final Color color;
 
-  const _Stat({required this.value, required this.label});
+  const _Stat({
+    required this.value,
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      children: [
-        Text(
-          value,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: theme.colorScheme.primary,
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(height: 4),
+          Text(value, style: theme.textTheme.titleLarge),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
-        Text(label, style: theme.textTheme.labelSmall),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -405,7 +406,18 @@ class _ActivityList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return Center(child: Text(empty));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            empty,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      );
     }
     final theme = Theme.of(context);
     return ListView.builder(
@@ -413,18 +425,41 @@ class _ActivityList extends StatelessWidget {
       itemCount: items.length,
       itemBuilder: (context, index) {
         final (title, body, date) = items[index];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 10),
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
-          child: ListTile(
-            title: Text(
-              title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    date,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    body,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            subtitle: Text(body, maxLines: 3, overflow: TextOverflow.ellipsis),
-            trailing: Text(date, style: theme.textTheme.labelSmall),
           ),
         );
       },

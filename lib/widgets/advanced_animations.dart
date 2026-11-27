@@ -46,11 +46,15 @@ class _FluidButtonState extends State<FluidButton>
       vsync: this,
     );
 
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.92)
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.92,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
 
-    _elevationAnimation = Tween<double>(begin: 4, end: 12)
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _elevationAnimation = Tween<double>(
+      begin: 4,
+      end: 12,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
   }
 
   @override
@@ -174,11 +178,15 @@ class _FluidCardState extends State<FluidCard>
       vsync: this,
     );
 
-    _elevationAnimation = Tween<double>(begin: 2, end: 16)
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _elevationAnimation = Tween<double>(
+      begin: 2,
+      end: 16,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
-    _offsetAnimation = Tween<Offset>(begin: Offset.zero, end: const Offset(0, -8))
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _offsetAnimation = Tween<Offset>(
+      begin: Offset.zero,
+      end: const Offset(0, -8),
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
   }
 
   @override
@@ -209,13 +217,14 @@ class _FluidCardState extends State<FluidCard>
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(widget.borderRadius),
-                    gradient: widget.gradient ??
+                    gradient:
+                        widget.gradient ??
                         LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
                             Colors.white,
-                        Colors.grey.withValues(alpha: 0.05),
+                            Colors.grey.withValues(alpha: 0.05),
                           ],
                         ),
                     border: Border.all(
@@ -270,8 +279,10 @@ class _FluidProgressBarState extends State<FluidProgressBar>
       duration: widget.animationDuration,
       vsync: this,
     );
-    _animation = Tween<double>(begin: 0, end: widget.value)
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    _animation = Tween<double>(
+      begin: 0,
+      end: widget.value,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
     _controller.forward();
   }
 
@@ -279,8 +290,10 @@ class _FluidProgressBarState extends State<FluidProgressBar>
   void didUpdateWidget(FluidProgressBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.value != widget.value) {
-      _animation = Tween<double>(begin: _animation.value, end: widget.value)
-          .animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+      _animation = Tween<double>(
+        begin: _animation.value,
+        end: widget.value,
+      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
       _controller.forward(from: 0);
     }
   }
@@ -367,10 +380,8 @@ class _PulseAnimationState extends State<PulseAnimation>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: widget.duration,
-      vsync: this,
-    )..repeat();
+    _controller = AnimationController(duration: widget.duration, vsync: this)
+      ..repeat();
 
     _scaleAnimation = Tween<double>(
       begin: widget.scaleBegin,
@@ -436,10 +447,8 @@ class _RotationAnimationState extends State<RotationAnimation>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: widget.duration,
-      vsync: this,
-    )..repeat();
+    _controller = AnimationController(duration: widget.duration, vsync: this)
+      ..repeat();
   }
 
   @override
@@ -451,7 +460,9 @@ class _RotationAnimationState extends State<RotationAnimation>
   @override
   Widget build(BuildContext context) {
     return RotationTransition(
-      turns: widget.reverse ? _controller.reverse as Animation<double> : _controller,
+      turns: widget.reverse
+          ? _controller.reverse as Animation<double>
+          : _controller,
       child: widget.child,
     );
   }
@@ -486,13 +497,11 @@ class _AnimatedCounterState extends State<AnimatedCounter>
   void initState() {
     super.initState();
     _displayValue = widget.value;
-    _controller = AnimationController(
-      duration: widget.duration,
-      vsync: this,
-    );
-    _animation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
+    _controller = AnimationController(duration: widget.duration, vsync: this);
+    _animation = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
     _controller.forward();
   }
 
@@ -562,14 +571,13 @@ class _BounceIconState extends State<BounceIcon>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: widget.duration,
-      vsync: this,
-    )..repeat();
+    _controller = AnimationController(duration: widget.duration, vsync: this)
+      ..repeat();
 
-    _bounceAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
-    );
+    _bounceAnimation = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
   }
 
   @override
@@ -585,11 +593,7 @@ class _BounceIconState extends State<BounceIcon>
       builder: (context, child) {
         return Transform.translate(
           offset: Offset(0, -10 * _bounceAnimation.value),
-          child: Icon(
-            widget.icon,
-            size: widget.size,
-            color: widget.color,
-          ),
+          child: Icon(widget.icon, size: widget.size, color: widget.color),
         );
       },
     );
@@ -623,10 +627,7 @@ class _SlideInFromLeftState extends State<SlideInFromLeft>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: widget.duration,
-      vsync: this,
-    );
+    _controller = AnimationController(duration: widget.duration, vsync: this);
 
     _offsetAnimation = Tween<Offset>(
       begin: const Offset(-1, 0),
@@ -647,10 +648,7 @@ class _SlideInFromLeftState extends State<SlideInFromLeft>
   @override
   Widget build(BuildContext context) {
     return ClipRect(
-      child: SlideTransition(
-        position: _offsetAnimation,
-        child: widget.child,
-      ),
+      child: SlideTransition(position: _offsetAnimation, child: widget.child),
     );
   }
 }
@@ -681,16 +679,17 @@ class _FadeInScaleState extends State<FadeInScale>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: widget.duration,
-      vsync: this,
-    );
+    _controller = AnimationController(duration: widget.duration, vsync: this);
 
-    _fadeAnimation = Tween<double>(begin: 0, end: 1)
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _fadeAnimation = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1)
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _scaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
     Future.delayed(Duration(milliseconds: widget.delayMilliseconds), () {
       if (mounted) _controller.forward();

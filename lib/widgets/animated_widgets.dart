@@ -35,7 +35,10 @@ class _AnimatedElevatedButtonState extends State<AnimatedElevatedButton>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(duration: const Duration(milliseconds: 200), vsync: this);
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
     _scaleAnimation = Tween<double>(
       begin: 1.0,
       end: 0.95,
@@ -71,13 +74,20 @@ class _AnimatedElevatedButtonState extends State<AnimatedElevatedButton>
         onTap: widget.onPressed,
         child: ElevatedButton.icon(
           onPressed: widget.onPressed,
-          icon: widget.icon != null ? Icon(widget.icon) : const SizedBox.shrink(),
+          icon: widget.icon != null
+              ? Icon(widget.icon)
+              : const SizedBox.shrink(),
           label: Text(widget.label),
           style: ElevatedButton.styleFrom(
             backgroundColor: widget.backgroundColor,
             foregroundColor: widget.foregroundColor,
-            padding: EdgeInsets.symmetric(horizontal: widget.icon != null ? 20 : 24, vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(widget.borderRadius)),
+            padding: EdgeInsets.symmetric(
+              horizontal: widget.icon != null ? 20 : 24,
+              vertical: 12,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(widget.borderRadius),
+            ),
           ),
         ),
       ),
@@ -110,7 +120,8 @@ class AnimatedCard extends StatefulWidget {
   State<AnimatedCard> createState() => _AnimatedCardState();
 }
 
-class _AnimatedCardState extends State<AnimatedCard> with SingleTickerProviderStateMixin {
+class _AnimatedCardState extends State<AnimatedCard>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -120,7 +131,10 @@ class _AnimatedCardState extends State<AnimatedCard> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(duration: const Duration(milliseconds: 600), vsync: this);
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
 
     _fadeAnimation = Tween<double>(
       begin: 0.0,
@@ -240,11 +254,14 @@ class _AnimatedListViewState extends State<AnimatedListView> {
     );
 
     for (int i = 0; i < _controllers.length; i++) {
-      Future.delayed(Duration(milliseconds: widget.itemDelay.inMilliseconds * i), () {
-        if (mounted && i < _controllers.length) {
-          _controllers[i].forward();
-        }
-      });
+      Future.delayed(
+        Duration(milliseconds: widget.itemDelay.inMilliseconds * i),
+        () {
+          if (mounted && i < _controllers.length) {
+            _controllers[i].forward();
+          }
+        },
+      );
     }
   }
 
@@ -265,7 +282,10 @@ class _AnimatedListViewState extends State<AnimatedListView> {
       shrinkWrap: widget.shrinkWrap,
       itemCount: widget.items.length,
       itemBuilder: (context, index) {
-        return AnimatedItemEntry(animation: _controllers[index], child: widget.items[index]);
+        return AnimatedItemEntry(
+          animation: _controllers[index],
+          child: widget.items[index],
+        );
       },
     );
   }
@@ -276,7 +296,11 @@ class AnimatedItemEntry extends StatelessWidget {
   final Animation<double> animation;
   final Widget child;
 
-  const AnimatedItemEntry({super.key, required this.animation, required this.child});
+  const AnimatedItemEntry({
+    super.key,
+    required this.animation,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -329,7 +353,10 @@ class SlidePageRoute<T> extends PageRoute<T> {
   final WidgetBuilder builder;
   final Offset beginOffset;
 
-  SlidePageRoute({required this.builder, this.beginOffset = const Offset(1.0, 0.0)});
+  SlidePageRoute({
+    required this.builder,
+    this.beginOffset = const Offset(1.0, 0.0),
+  });
 
   @override
   Color? get barrierColor => null;
@@ -383,7 +410,8 @@ class AnimatedIcon extends StatefulWidget {
   State<AnimatedIcon> createState() => _AnimatedIconState();
 }
 
-class _AnimatedIconState extends State<AnimatedIcon> with SingleTickerProviderStateMixin {
+class _AnimatedIconState extends State<AnimatedIcon>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _rotateAnimation;
@@ -441,14 +469,16 @@ class ShimmerLoading extends StatefulWidget {
   State<ShimmerLoading> createState() => _ShimmerLoadingState();
 }
 
-class _ShimmerLoadingState extends State<ShimmerLoading> with SingleTickerProviderStateMixin {
+class _ShimmerLoadingState extends State<ShimmerLoading>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(duration: widget.duration, vsync: this)..repeat();
+    _controller = AnimationController(duration: widget.duration, vsync: this)
+      ..repeat();
 
     _animation = Tween<double>(begin: 0, end: 1).animate(_controller);
   }
@@ -469,7 +499,11 @@ class _ShimmerLoadingState extends State<ShimmerLoading> with SingleTickerProvid
             return LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              stops: [_animation.value - 0.3, _animation.value, _animation.value + 0.3],
+              stops: [
+                _animation.value - 0.3,
+                _animation.value,
+                _animation.value + 0.3,
+              ],
               colors: [
                 Colors.white.withAlpha(0),
                 Colors.white.withAlpha(102),
