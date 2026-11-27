@@ -64,6 +64,33 @@ void main() {
     });
   });
 
+  test('PerfilPublico oculta el progreso si el servidor lo indica', () {
+    final ajeno = PerfilPublico.desdeFila({
+      'username': 'ana',
+      'ver_progreso': false,
+      'completed_lessons': null,
+      'daily_streak': null,
+      'posts_count': 3,
+    });
+    expect(ajeno.progresoVisible, isFalse);
+    expect(ajeno.leccionesCompletadas, 0);
+    expect(ajeno.publicaciones, 3);
+
+    final propio = PerfilPublico.desdeFila({
+      'username': 'ana',
+      'ver_progreso': true,
+      'completed_lessons': 7,
+    });
+    expect(propio.progresoVisible, isTrue);
+    expect(propio.leccionesCompletadas, 7);
+
+    // Un servidor viejo no manda el dato: se muestra como antes.
+    expect(
+      PerfilPublico.desdeFila({'username': 'ana'}).progresoVisible,
+      isTrue,
+    );
+  });
+
   test('PerfilPublico lee las estadísticas, aunque vengan como texto', () {
     final perfil = PerfilPublico.desdeFila({
       'username': 'ana',

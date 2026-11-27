@@ -6,6 +6,7 @@ import '../servicio_bd.dart';
 import '../modelos/imagen_perfil.dart';
 import '../modelos/perfil.dart';
 import '../servicios/servicio_chat.dart';
+import '../servicios/recordatorios.dart';
 import '../servicios/servicio_push.dart';
 import '../servicios/sesion_actual.dart';
 import '../paginas/pagina_diverkoru.dart';
@@ -104,6 +105,7 @@ class _HomePageState extends State<HomePage> {
     unawaited(NotificationService.startListening(_currentUsername));
     // Este teléfono recibirá las notificaciones aunque la app esté cerrada.
     unawaited(ServicioPush.registrar());
+    progressStats.addListener(_alCambiarProgreso);
   }
 
   @override
@@ -112,6 +114,7 @@ class _HomePageState extends State<HomePage> {
     if (canal != null) unawaited(ServicioChat.dejarDeEscuchar(canal));
     SesionActual.instancia.removeListener(_onSesionChanged);
     pedidoVolverAlInicio.removeListener(_irAPrimeraPestana);
+    progressStats.removeListener(_alCambiarProgreso);
     unawaited(NotificationService.stopListening(onlyFor: _currentUsername));
     super.dispose();
   }
@@ -153,6 +156,7 @@ class _HomePageState extends State<HomePage> {
       _isAdmin = role == DBService.roleAdmin;
       _isTeacher = role == DBService.roleTeacher;
     });
+    _alCambiarProgreso();
   }
 
   String get _greeting => switch (_gender) {
@@ -204,6 +208,25 @@ class _HomePageState extends State<HomePage> {
           ..addAll(loadedSpaces);
       });
     }
+  }
+
+  /// Lo último que se usó para programar los recordatorios (racha y si ya
+  /// estudió hoy); si cambia, se reprograman.
+  (int, bool)? _recordatoriosPara;
+
+  /// Programa los recordatorios de racha y sugerencias (solo estudiantes).
+  void _alCambiarProgreso() {
+    if (!_isRoleLoaded || !progressStats.isCourseProgressLoaded) return;
+    if (_role != DBService.roleStudent) {
+      if (_recordatoriosPara != null) return;
+      _recordatoriosPara = (-1, false);
+      unawaited(Recordatorios.cancelarTodos());
+      return;
+    }
+    final ahora = (progressStats.dailyStreak, progressStats.estudioHoy);
+    if (ahora == _recordatoriosPara) return;
+    _recordatoriosPara = ahora;
+    unawaited(Recordatorios.actualizar());
   }
 
   /// El botón de casa de otras pantallas pide volver a la primera pestaña.
@@ -278,6 +301,8 @@ class _HomePageState extends State<HomePage> {
           _isRoleLoaded = true;
           _roleLoadError = null;
         });
+        _recordatoriosPara = null;
+        _alCambiarProgreso();
         if (role == DBService.roleStudent) {
           unawaited(
             MascotaGuia.mostrarSiEsPrimeraVez(context, _currentUsername),

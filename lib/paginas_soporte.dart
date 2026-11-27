@@ -15,6 +15,7 @@ import 'widgets/ui_koru.dart';
 import 'modelos/modelos_curso.dart';
 import 'cursos_docentes.dart' show decodeActivities;
 import 'widgets/boton_inicio.dart';
+import 'servicios/recordatorios.dart';
 
 class _SupportLoadingIndicator extends StatelessWidget {
   const _SupportLoadingIndicator();
@@ -75,6 +76,8 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 12),
           const _KoruSection(),
           const SizedBox(height: 12),
+          const _NotificacionesSection(),
+          const SizedBox(height: 12),
           Card(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -108,6 +111,74 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Recordatorios de racha y sugerencias (se programan en el teléfono).
+class _NotificacionesSection extends StatefulWidget {
+  const _NotificacionesSection();
+
+  @override
+  State<_NotificacionesSection> createState() => _NotificacionesSectionState();
+}
+
+class _NotificacionesSectionState extends State<_NotificacionesSection> {
+  bool? _activados;
+
+  @override
+  void initState() {
+    super.initState();
+    Recordatorios.activados().then((v) {
+      if (mounted) setState(() => _activados = v);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text('Notificaciones', style: theme.textTheme.titleMedium),
+            ),
+            SwitchListTile(
+              secondary: IconTile(
+                icon: Icons.notifications_active_rounded,
+                color: context.koru.oro,
+                size: 40,
+              ),
+              title: const Text('Recordatorios y sugerencias'),
+              subtitle: const Text(
+                'Racha diaria a las 7 p. m. e ideas para usar Korulab a las '
+                '9 a. m. y 5 p. m.',
+              ),
+              value: _activados ?? true,
+              onChanged: _activados == null
+                  ? null
+                  : (v) {
+                      setState(() => _activados = v);
+                      Recordatorios.cambiar(v);
+                    },
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                'Los mensajes, avisos, solicitudes de amistad y comentarios '
+                'en Korublog siempre te llegan.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -13,6 +13,7 @@ import '../tema/tema_korulab.dart';
 import '../widgets/selector_emojis.dart';
 import '../widgets/ui_koru.dart';
 import '../widgets/boton_inicio.dart';
+import '../modelos/modelos_discusion.dart' show openPublicProfile;
 
 String _hora(DateTime fecha) {
   final ahora = DateTime.now();
@@ -1096,36 +1097,52 @@ class _ChatPageState extends State<ChatPage> {
       child: Scaffold(
         appBar: AppBar(
           titleSpacing: 0,
-          title: Row(
-            children: [
-              KoruAvatar(
-                image: contacto.foto?.provider,
-                name: contacto.nombreVisible.replaceFirst('@', ''),
-                radius: 18,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      contacto.nombreVisible,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium,
+          // Tocar la foto o el nombre abre el perfil de la persona.
+          title: InkWell(
+            borderRadius: BorderRadius.circular(KoruRadius.m),
+            onTap: () => openPublicProfile(
+              context,
+              handle: contacto.username,
+              name: contacto.nombreVisible,
+              photo: contacto.foto,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+              child: Row(
+                children: [
+                  Hero(
+                    tag: 'foto-perfil-${contacto.username}',
+                    child: KoruAvatar(
+                      image: contacto.foto?.provider,
+                      name: contacto.nombreVisible.replaceFirst('@', ''),
+                      radius: 18,
                     ),
-                    Text(
-                      contacto.esProfesor
-                          ? 'Profesor · @${contacto.username}'
-                          : '@${contacto.username}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          contacto.nombreVisible,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        Text(
+                          contacto.esProfesor
+                              ? 'Profesor · @${contacto.username}'
+                              : '@${contacto.username}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
           actions: const [BotonInicio()],
         ),

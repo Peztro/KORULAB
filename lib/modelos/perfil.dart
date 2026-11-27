@@ -103,6 +103,7 @@ class PerfilPublico extends Perfil {
     this.rachaDiaria = 0,
     this.publicaciones = 0,
     this.respuestas = 0,
+    this.progresoVisible = true,
   });
 
   factory PerfilPublico.desdeFila(Map<String, dynamic> fila) {
@@ -122,6 +123,8 @@ class PerfilPublico extends Perfil {
       rachaDiaria: _entero(fila['daily_streak']),
       publicaciones: _entero(fila['posts_count']),
       respuestas: _entero(fila['replies_count']),
+      // Versiones viejas del servidor no lo mandan: entonces se muestra.
+      progresoVisible: fila['ver_progreso'] != false,
     );
   }
 
@@ -129,6 +132,10 @@ class PerfilPublico extends Perfil {
   final int rachaDiaria;
   final int publicaciones;
   final int respuestas;
+
+  /// Si quien mira puede ver lecciones, racha y respuestas (es la misma
+  /// persona, un profe o un admin). Entre estudiantes es privado.
+  final bool progresoVisible;
 }
 
 /// Cuenta guardada en el dispositivo para cambiar de sesión rápido.

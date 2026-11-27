@@ -26,6 +26,13 @@ class ProgressStats extends ChangeNotifier {
   int get totalAnswers => _totalAnswers;
   int get completedLessons => _completedLessons;
   int get dailyStreak => _dailyStreak;
+
+  /// ¿Ya completó una actividad hoy? (la racha de hoy está a salvo).
+  bool get estudioHoy {
+    final hoy = DateTime.now();
+    return _lastLessonDate == DateTime(hoy.year, hoy.month, hoy.day);
+  }
+
   int get ekostrellas => _ekostrellas;
   int get hintCredits => _hintCredits;
   int get streakProtectors => _streakProtectors;

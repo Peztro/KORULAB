@@ -107,7 +107,7 @@ class NotificationService {
     final me = client.auth.currentUser?.id;
     if (me == null || row['recipient_id'] != me) return;
     if (row['sender_id'] == chatAbiertoCon) return;
-    var sender = 'Nuevo mensaje';
+    var sender = 'Alguien';
     try {
       final profile = await client
           .from('public_profiles')
@@ -121,15 +121,61 @@ class NotificationService {
     } catch (error) {
       debugPrint('No se pudo obtener el remitente: $error');
     }
+    await mostrarMensajeNuevo(
+      mensajeId: (row['id'] as num?)?.toInt(),
+      remitente: sender,
+      texto: _textoMensaje(row),
+    );
+  }
+
+  /// Notificación de un mensaje privado: plegada solo dice "Mensaje nuevo";
+  /// al desplegarla se ve de quién es y el mensaje.
+  ///
+  /// La usan la app abierta (al escuchar en vivo) y el push con la app
+  /// cerrada. Con el mismo [mensajeId] la segunda reemplaza a la primera,
+  /// así no sale repetida si llega por los dos caminos.
+  static Future<void> mostrarMensajeNuevo({
+    required String remitente,
+    required String texto,
+    int? mensajeId,
+  }) async {
+    await _iniciarSinPedirPermiso();
+    final id = mensajeId == null ? _nextId++ : 100000 + mensajeId % 900000;
     await _plugin.show(
-      id: _nextId++,
-      title: sender,
-      body: _textoMensaje(row),
-      notificationDetails: const NotificationDetails(
-        android: _androidDetails,
-        iOS: DarwinNotificationDetails(),
+      id: id,
+      title: 'Mensaje nuevo',
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          _androidDetails.channelId,
+          _androidDetails.channelName,
+          channelDescription: _androidDetails.channelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+          styleInformation: BigTextStyleInformation(
+            texto,
+            contentTitle: remitente,
+            summaryText: 'Korulab',
+          ),
+        ),
+        iOS: DarwinNotificationDetails(subtitle: remitente),
       ),
     );
+  }
+
+  /// Prepara el plugin sin pedir permisos (sirve también en segundo plano,
+  /// cuando la app está cerrada).
+  static Future<void> _iniciarSinPedirPermiso() async {
+    if (_initialized || kIsWeb) return;
+    const settings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/launcher_icon'),
+      iOS: DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      ),
+    );
+    await _plugin.initialize(settings: settings);
+    _initialized = true;
   }
 
   static String _textoMensaje(Map<String, dynamic> row) {

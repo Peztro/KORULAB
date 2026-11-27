@@ -1,9 +1,13 @@
 // Edge Function: envía notificaciones push (Firebase Cloud Messaging).
 //
-// La llama la base de datos (disparador "pedir_push", ver
-// supabase/migrations/20261201_notificaciones_push.sql) cuando se guarda:
-//   * un mensaje privado (direct_messages): avisa al destinatario;
-//   * un aviso (messages): a su destinatario, o a todos si es "*".
+// La llama la base de datos (disparadores "pedir_push", ver
+// supabase/migrations/20261201_notificaciones_push.sql y
+// 20261202_push_amistades_korublog.sql) cuando:
+//   * llega un mensaje privado (direct_messages): avisa al destinatario;
+//   * se publica un aviso (messages): a su destinatario, o a todos si es "*";
+//   * llega una solicitud de amistad (friendships): a quien la recibe;
+//   * aceptan una solicitud (friendships_aceptada): a quien la envió;
+//   * responden en Korublog (discussion_replies): al autor de la publicación.
 //
 // Solo recibe { tabla, id }. Vuelve a leer la fila con permisos de servidor
 // y anota lo enviado en push_enviados, así que llamarla a mano no sirve para
@@ -24,6 +28,9 @@ type Aviso = {
   cuerpo: string;
   destinatarios: string[]; // ids de usuario
   datos: Record<string, string>;
+  /// Sin notificación armada: la app la arma (chats: plegada dice "Mensaje
+  /// nuevo" y desplegada muestra remitente y mensaje).
+  soloDatos?: boolean;
 };
 
 const json = (body: unknown, status = 200) =>
@@ -50,8 +57,16 @@ Deno.serve(async (req) => {
   } catch {
     return json({ error: 'Cuerpo no válido' }, 400);
   }
+  const avisadores: Record<string, (id: number) => Promise<Aviso | null>> = {
+    direct_messages: avisoDeMensajePrivado,
+    messages: avisoGeneral,
+    friendships: avisoDeSolicitud,
+    friendships_aceptada: avisoDeAmistadAceptada,
+    discussion_replies: avisoDeRespuesta,
+  };
   if (
-    (tabla !== 'direct_messages' && tabla !== 'messages') ||
+    typeof tabla !== 'string' ||
+    !(tabla in avisadores) ||
     typeof id !== 'number'
   ) {
     return json({ error: 'Petición no válida' }, 400);
@@ -63,10 +78,7 @@ Deno.serve(async (req) => {
     .insert({ tabla, fila_id: id });
   if (yaEnviado) return json({ ok: true, omitido: 'ya enviado' });
 
-  const aviso =
-    tabla === 'direct_messages'
-      ? await avisoDeMensajePrivado(id)
-      : await avisoGeneral(id);
+  const aviso = await avisadores[tabla](id);
   if (!aviso || aviso.destinatarios.length === 0) {
     return json({ ok: true, omitido: 'sin destinatarios' });
   }
@@ -135,10 +147,17 @@ async function avisoDeMensajePrivado(id: number): Promise<Aviso | null> {
     : texto;
 
   return {
-    titulo: nombre,
+    titulo: 'Mensaje nuevo',
     cuerpo: recortar(cuerpo),
     destinatarios: [m.recipient_id as string],
-    datos: { tipo: 'chat', remitente: m.sender_id as string },
+    datos: {
+      tipo: 'chat',
+      remitente: m.sender_id as string,
+      remitente_nombre: nombre,
+      texto: recortar(cuerpo, 900),
+      mensaje_id: String(id),
+    },
+    soloDatos: true,
   };
 }
 
@@ -166,6 +185,101 @@ async function avisoGeneral(id: number): Promise<Aviso | null> {
       .filter((p) => (p.username as string).toLowerCase() !== remitente)
       .map((p) => p.id as string),
     datos: { tipo: 'aviso' },
+  };
+}
+
+/** Nombre para mostrar de un usuario (por id). */
+async function nombreDe(id: string): Promise<string> {
+  const { data } = await admin
+    .from('profiles')
+    .select('username, display_name')
+    .eq('id', id)
+    .maybeSingle();
+  return (
+    (data?.display_name as string | null)?.trim() ||
+    (data ? `@${data.username}` : 'Alguien')
+  );
+}
+
+// Amistades automáticas (admin con todos, profes con estudiantes): no
+// cuentan como "aceptar una solicitud".
+function amistadAutomatica(rolA?: string, rolB?: string): boolean {
+  return (
+    rolA === 'admin' ||
+    rolB === 'admin' ||
+    (rolA === 'teacher' && rolB === 'student') ||
+    (rolA === 'student' && rolB === 'teacher')
+  );
+}
+
+async function avisoDeSolicitud(id: number): Promise<Aviso | null> {
+  const { data: f } = await admin
+    .from('friendships')
+    .select('requester_id, addressee_id, status, created_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (!f || f.status !== 'pending' || !reciente(f.created_at)) return null;
+  const quien = await nombreDe(f.requester_id as string);
+  return {
+    titulo: 'Nueva solicitud de amistad 🤝',
+    cuerpo: `${quien} quiere ser tu amigo en Korulab.`,
+    destinatarios: [f.addressee_id as string],
+    datos: { tipo: 'amistad' },
+  };
+}
+
+async function avisoDeAmistadAceptada(id: number): Promise<Aviso | null> {
+  const { data: f } = await admin
+    .from('friendships')
+    .select('requester_id, addressee_id, status, responded_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (!f || f.status !== 'accepted' || !reciente(f.responded_at)) return null;
+  const { data: roles } = await admin
+    .from('profiles')
+    .select('id, role')
+    .in('id', [f.requester_id, f.addressee_id]);
+  const rol = (uid: string) =>
+    (roles ?? []).find((r) => r.id === uid)?.role as string | undefined;
+  if (amistadAutomatica(rol(f.requester_id), rol(f.addressee_id))) return null;
+  const quien = await nombreDe(f.addressee_id as string);
+  return {
+    titulo: '¡Tienes un amigo nuevo! 🎉',
+    cuerpo: `${quien} aceptó tu solicitud de amistad. ¡Escríbele!`,
+    destinatarios: [f.requester_id as string],
+    datos: { tipo: 'amistad' },
+  };
+}
+
+async function avisoDeRespuesta(id: number): Promise<Aviso | null> {
+  const { data: r } = await admin
+    .from('discussion_replies')
+    .select('discussion_id, author, author_handle, message, created_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (!r || !reciente(r.created_at)) return null;
+  const { data: pub } = await admin
+    .from('discussion_spaces')
+    .select('title, author_handle')
+    .eq('id', r.discussion_id)
+    .maybeSingle();
+  if (!pub) return null;
+  const autor = ((pub.author_handle as string) ?? '').toLowerCase();
+  const quien = ((r.author_handle as string) ?? '').toLowerCase();
+  // No se avisa a uno mismo.
+  if (!autor || autor === quien) return null;
+  const { data: dueno } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('username', autor)
+    .maybeSingle();
+  if (!dueno) return null;
+  const nombre = ((r.author as string) ?? '').trim() || `@${quien}`;
+  return {
+    titulo: `Comentaron tu publicación en Korublog 💬`,
+    cuerpo: recortar(`${nombre} en "${pub.title}": ${r.message}`),
+    destinatarios: [dueno.id as string],
+    datos: { tipo: 'korublog', publicacion: String(r.discussion_id) },
   };
 }
 
@@ -253,15 +367,23 @@ async function enviarAFcm(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        message: {
-          token,
-          notification: { title: aviso.titulo, body: aviso.cuerpo },
-          data: aviso.datos,
-          android: {
-            priority: 'HIGH',
-            notification: { channel_id: 'messages' },
-          },
-        },
+        message: aviso.soloDatos
+          ? {
+              token,
+              data: aviso.datos,
+              // Alta prioridad: despierta la app para que arme la
+              // notificación aunque esté cerrada.
+              android: { priority: 'HIGH' },
+            }
+          : {
+              token,
+              notification: { title: aviso.titulo, body: aviso.cuerpo },
+              data: aviso.datos,
+              android: {
+                priority: 'HIGH',
+                notification: { channel_id: 'messages' },
+              },
+            },
       }),
     },
   );

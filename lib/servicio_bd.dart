@@ -11,6 +11,7 @@ import 'modelos/perfil.dart';
 import 'servicios/koru_controlador.dart';
 import 'servicios/servicio_biometrico.dart';
 import 'servicios/sesion_actual.dart';
+import 'servicios/recordatorios.dart';
 import 'servicios/servicio_push.dart';
 
 /// Acceso a datos de Korulab sobre Supabase (Auth + Postgres).
@@ -1707,6 +1708,7 @@ class DBService {
       // Antes de cerrar la sesión: que este teléfono deje de recibir las
       // notificaciones de la cuenta.
       await ServicioPush.olvidar();
+      await Recordatorios.cancelarTodos();
       if (userId != null) await forgetAccount(userId);
       await _db.auth.signOut();
       _cachedUsername = null;

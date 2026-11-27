@@ -27,9 +27,7 @@ void main() {
     );
   });
 
-  testWidgets('mosaicos y mini sendero se dibujan sin errores', (
-    tester,
-  ) async {
+  testWidgets('mosaicos y mini sendero se dibujan sin errores', (tester) async {
     var tocado = false;
     await tester.pumpWidget(
       MaterialApp(
